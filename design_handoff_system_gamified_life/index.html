@@ -798,10 +798,6 @@ function App({ session }) {
           ...q, title:data.title||q.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||q.reward
         })
       })}));
-    } else if (type === 'editDaily') {
-      setSt(p => ({...p, daily:p.daily.map(d => d.id!==modal.questId ? d : {
-        ...d, title:data.title||d.title, description:data.description||'', period:data.period||d.period, reward:parseInt(data.reward)||d.reward,
-      })}));
     } else if (type === 'addReward') {
       setSt(p => ({ ...p, rewards:[...p.rewards, {id:uid(), title:data.title, description:data.description||'', cost:parseInt(data.cost)||100, bought:false, repeatable:!!data.repeatable, count:0}] }));
     } else if (type === 'editReward') {
@@ -918,7 +914,8 @@ function App({ session }) {
             onComplete={completeDaily}
             onAdd={()=>setModal({type:'addDaily'})}
             onDelete={delDaily}
-            onEdit={q=>setModal({type:'editDaily', questId:q.id, data:{title:q.title, description:q.description, period:q.period||'daily', reward:String(q.reward)}})}
+            onSave={(id,data)=>setSt(p=>({...p,daily:p.daily.map(d=>d.id!==id?d:{...d,...data})}))}
+
           />
         )}
         {tab==='shop' && (
@@ -1134,50 +1131,141 @@ function QuestModal({ qd, onComplete, onDelete, onEdit, onClose }) {
 }
 
 // ── RECURRING QUESTS VIEW ──
-function RecurringQuestModal({ quest, onComplete, onEdit, onClose }) {
+function RecurringQuestModal({ quest, onComplete, onSave, onClose }) {
   const due = isDue(quest);
+  const [editField, setEditField] = useState(null);
+  const [val, setVal] = useState('');
+  const [ptype, setPtype] = useState('daily');
+  const [pval, setPval] = useState('');
+
+  const start = (field, cur) => { setEditField(field); setVal(String(cur)); };
+  const startPeriod = () => {
+    const p = quest.period || 'daily';
+    setPtype(p.includes(':') ? p.split(':')[0] : p);
+    setPval(p.includes(':') ? p.split(':')[1] : '');
+    setEditField('period');
+  };
+  const cancel = () => setEditField(null);
+  const commit = (field, v) => {
+    setEditField(null);
+    const d = { title:quest.title, description:quest.description||'', period:quest.period||'daily', reward:quest.reward };
+    if (field==='title')  { if(!v.trim()) return; d.title=v.trim(); }
+    if (field==='desc')   d.description=v;
+    if (field==='reward') d.reward=parseInt(v)||quest.reward;
+    onSave(d);
+  };
+  const commitPeriod = (pt, pv) => {
+    setEditField(null);
+    onSave({ title:quest.title, description:quest.description||'', period:pv?`${pt}:${pv}`:pt, reward:quest.reward });
+  };
+
+  const ib = { background:'transparent', border:'none', outline:'none', padding:0 };
+
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal" style={{padding:'0'}}>
         <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'14px 24px',background:'rgba(15,168,245,0.12)',borderBottom:'1px solid rgba(15,168,245,0.3)'}}>
           <span style={{color:'var(--pur)',fontSize:'16px'}}>⊕</span>
           <span style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'3px',color:'var(--pur)',textShadow:'0 0 10px rgba(15,168,245,0.9)'}}>РЕГУЛЯРНЫЙ КВЕСТ</span>
-          <span style={{marginLeft:'auto',fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'1px',color:'var(--mut2)',background:'var(--s2)',border:'1px solid var(--bd)',borderRadius:'3px',padding:'2px 7px'}}>
-            {periodLabel(quest.period)}
-          </span>
         </div>
         <div style={{padding:'24px 28px'}}>
-          <div style={{fontSize:'20px',fontWeight:700,color:'#e2e8f0',marginBottom:'8px'}}>{quest.title}</div>
-          {quest.description && (
-            <div style={{fontSize:'13px',color:'#5a6478',lineHeight:1.55,marginBottom:'12px'}}>{quest.description}</div>
+
+          {editField==='title' ? (
+            <input autoFocus value={val} onChange={e=>setVal(e.target.value)}
+              onBlur={()=>commit('title',val)}
+              onKeyDown={e=>{if(e.key==='Enter')commit('title',val);if(e.key==='Escape')cancel();}}
+              style={{...ib,fontSize:'20px',fontWeight:700,color:'#e2e8f0',width:'100%',borderBottom:'1px solid var(--pur)',marginBottom:'8px'}} />
+          ) : (
+            <div onClick={()=>start('title',quest.title)}
+              style={{fontSize:'20px',fontWeight:700,color:'#e2e8f0',marginBottom:'8px',cursor:'text'}}>
+              {quest.title}
+            </div>
           )}
+
+          {editField==='desc' ? (
+            <textarea autoFocus value={val} onChange={e=>setVal(e.target.value)}
+              onBlur={()=>commit('desc',val)}
+              onKeyDown={e=>{if(e.key==='Escape')cancel();}}
+              rows={Math.max(2,val.split('\n').length+1)}
+              style={{...ib,resize:'none',fontSize:'13px',color:'var(--mut2)',lineHeight:1.55,width:'100%',borderBottom:'1px solid var(--pur)',marginBottom:'12px',display:'block',fontFamily:'var(--body)',fontWeight:500}} />
+          ) : (
+            <div onClick={()=>start('desc',quest.description||'')}
+              style={{fontSize:'13px',lineHeight:1.55,marginBottom:'12px',cursor:'text',
+                color:quest.description?'#5a6478':'rgba(88,100,120,0.4)'}}>
+              {quest.description || 'Добавить описание...'}
+            </div>
+          )}
+
+          {editField==='period' ? (
+            <div style={{display:'flex',gap:'6px',alignItems:'center',flexWrap:'wrap',marginBottom:'12px'}}>
+              <select value={ptype} className="fi" style={{width:'auto',padding:'5px 28px 5px 8px',fontSize:'12px',cursor:'pointer'}}
+                onChange={e=>{const t=e.target.value;setPtype(t);setPval(t==='weekly'?'1':t==='monthly'?'1':t==='every'?'3':'');}}>
+                <option value="daily">Ежедневно</option>
+                <option value="weekly">Раз в неделю</option>
+                <option value="monthly">Раз в месяц</option>
+                <option value="every">Каждые N дней</option>
+              </select>
+              {ptype==='weekly' && (
+                <select value={pval||'1'} className="fi" style={{width:'auto',padding:'5px 28px 5px 8px',fontSize:'12px',cursor:'pointer'}} onChange={e=>setPval(e.target.value)}>
+                  {WDAYS_FULL.map((d,i)=><option key={i} value={String(i)}>{d}</option>)}
+                </select>
+              )}
+              {(ptype==='monthly'||ptype==='every') && (
+                <input type="number" min={ptype==='every'?2:1} max={ptype==='every'?365:31} value={pval||'1'} className="fi"
+                  style={{width:'72px',padding:'5px 8px',fontSize:'12px'}} onChange={e=>setPval(e.target.value)} />
+              )}
+              <button className="btn btn-pur" style={{padding:'4px 10px',fontSize:'11px'}} onClick={()=>commitPeriod(ptype,pval)}>✓</button>
+              <button className="btn btn-ghost" style={{padding:'4px 10px',fontSize:'11px'}} onClick={cancel}>✕</button>
+            </div>
+          ) : (
+            <div onClick={startPeriod} title="Нажмите чтобы изменить"
+              style={{display:'inline-flex',alignItems:'center',gap:'5px',marginBottom:'12px',cursor:'pointer',
+                fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'1px',color:'var(--pur)',
+                background:'var(--pur2)',border:'1px solid rgba(15,168,245,.3)',borderRadius:'3px',padding:'3px 8px'}}>
+              ⟳ {periodLabel(quest.period)}
+            </div>
+          )}
+
           <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
-            <div style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px'}}>+{quest.reward} ✦</div>
+            {editField==='reward' ? (
+              <div style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                <span style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)'}}>+</span>
+                <input autoFocus type="number" min="1" value={val} onChange={e=>setVal(e.target.value)}
+                  onBlur={()=>commit('reward',val)}
+                  onKeyDown={e=>{if(e.key==='Enter')commit('reward',val);if(e.key==='Escape')cancel();}}
+                  style={{...ib,width:'55px',fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px',borderBottom:'1px solid var(--pur)'}} />
+                <span style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px'}}>✦</span>
+              </div>
+            ) : (
+              <div onClick={()=>start('reward',String(quest.reward))}
+                style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px',cursor:'text'}}>
+                +{quest.reward} ✦
+              </div>
+            )}
             {(quest.doneCount||0) > 0 && (
               <div style={{fontFamily:'var(--hud)',fontSize:'10px',color:'var(--mut2)',letterSpacing:'1px'}}>× {quest.doneCount} выполнений</div>
             )}
           </div>
+
           {!due && (
             <div style={{marginTop:'10px',fontFamily:'var(--hud)',fontSize:'10px',color:'var(--mut)',letterSpacing:'1px'}}>
               {nextDueText(quest)}
             </div>
           )}
         </div>
-        <div style={{display:'flex',gap:'10px',padding:'0 28px 24px',justifyContent:'center',flexWrap:'wrap'}}>
-          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px',minWidth:'80px'}} onClick={onClose}>ЗАКРЫТЬ</button>
-          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px',minWidth:'80px'}} onClick={onEdit}>ИЗМЕНИТЬ</button>
-          {due && (
-            <button className="btn btn-gld" style={{flex:1,justifyContent:'center',letterSpacing:'2px',minWidth:'100px'}} onClick={onComplete}>✓ ВЫПОЛНЕНО</button>
-          )}
+        <div style={{display:'flex',gap:'12px',padding:'0 28px 24px'}}>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px'}} onClick={onClose}>ЗАКРЫТЬ</button>
+          {due && <button className="btn btn-gld" style={{flex:1,justifyContent:'center',letterSpacing:'2px'}} onClick={onComplete}>✓ ВЫПОЛНЕНО</button>}
         </div>
       </div>
     </div>
   );
 }
 
-function DailyView({ quests, onComplete, onAdd, onDelete, onEdit }) {
-  const [selQuest, setSelQuest] = useState(null);
+function DailyView({ quests, onComplete, onAdd, onDelete, onSave }) {
+  const [selId, setSelId] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  const selQuest = selId ? quests.find(q=>q.id===selId) : null;
   const due = quests.filter(isDue);
   const notDue = quests.filter(q => !isDue(q));
   return (
@@ -1185,9 +1273,9 @@ function DailyView({ quests, onComplete, onAdd, onDelete, onEdit }) {
       {selQuest && (
         <RecurringQuestModal
           quest={selQuest}
-          onComplete={()=>{ onComplete(selQuest.id); setSelQuest(null); }}
-          onEdit={()=>{ onEdit(selQuest); setSelQuest(null); }}
-          onClose={()=>setSelQuest(null)}
+          onComplete={()=>{ onComplete(selQuest.id); setSelId(null); }}
+          onSave={data=>onSave(selQuest.id, data)}
+          onClose={()=>setSelId(null)}
         />
       )}
       <div className="view-hdr" style={{width:'100%',maxWidth:'560px'}}>
@@ -1207,7 +1295,7 @@ function DailyView({ quests, onComplete, onAdd, onDelete, onEdit }) {
       )}
 
       {due.map(q => (
-        <div key={q.id} className="dq-card" style={{width:'100%',maxWidth:'560px',cursor:'pointer'}} onClick={()=>setSelQuest(q)}>
+        <div key={q.id} className="dq-card" style={{width:'100%',maxWidth:'560px',cursor:'pointer'}} onClick={()=>setSelId(q.id)}>
           <div className="dq-check" style={{pointerEvents:'none'}} />
           <div className="dq-info" style={{flex:1}}>
             <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
@@ -1240,7 +1328,7 @@ function DailyView({ quests, onComplete, onAdd, onDelete, onEdit }) {
             <span style={{flex:1,height:'1px',background:'var(--bd)'}} />
           </button>
           {showInactive && notDue.map(q => (
-            <div key={q.id} className="dq-card dq-done" style={{width:'100%',marginTop:'8px',cursor:'pointer'}} onClick={()=>setSelQuest(q)}>
+            <div key={q.id} className="dq-card dq-done" style={{width:'100%',marginTop:'8px',cursor:'pointer'}} onClick={()=>setSelId(q.id)}>
               <div className="dq-check done" style={{pointerEvents:'none'}}>⏸</div>
               <div className="dq-info" style={{flex:1}}>
                 <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
@@ -1367,12 +1455,6 @@ const FORMS = {
       {k:'repeatable',  label:'Тип',             type:'checkbox', checkLabel:'Многоразовая (можно купить несколько раз)'},
     ]
   },
-  editDaily: { title:'Изменить квест', fields:[
-    {k:'title',       label:'Название',      type:'text', req:true},
-    {k:'description', label:'Описание',      type:'textarea'},
-    {k:'period',      label:'Периодичность', type:'periodSelect'},
-    {k:'reward',      label:'Награда (✦)',   type:'number', ph:'10'},
-  ]},
   editReward: { title:'Изменить награду', fields:[
     {k:'title',       label:'Название',        type:'text',     req:true},
     {k:'description', label:'Описание',         type:'textarea'},
