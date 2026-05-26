@@ -499,6 +499,32 @@ const SUPABASE_URL = 'https://hebhndizvzqxlxuepedm.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlYmhuZGl6dnpxeGx4dWVwZWRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODEwNjgsImV4cCI6MjA5NTM1NzA2OH0.lpV6__Bz966fk-O_tRAxLXEwrabe3K_9_pa-ZM_Hwqk';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ── Sound FX ──
+const SFX = (() => {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  let ctx = null;
+  const get = () => {
+    if (!ctx) { try { ctx = new AC(); } catch(e) { return null; } }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  };
+  const tone = (c, freq, t, dur, type='square', vol=0.12) => {
+    const o=c.createOscillator(), g=c.createGain();
+    o.connect(g); g.connect(c.destination);
+    o.type=type; o.frequency.value=freq;
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(vol,t+0.008);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.start(t); o.stop(t+dur+0.05);
+  };
+  return {
+    quest:  ()=>{ const c=get(); if(!c) return; const t=c.currentTime; tone(c,523,t,0.09); tone(c,1047,t+0.08,0.14); },
+    levelUp:()=>{ const c=get(); if(!c) return; const t=c.currentTime; [392,523,659,784,1047].forEach((f,i)=>tone(c,f,t+i*0.1,0.18,'sawtooth',0.09)); },
+    daily:  ()=>{ const c=get(); if(!c) return; const t=c.currentTime; tone(c,440,t,0.09,'sine',0.1); tone(c,660,t+0.08,0.16,'sine',0.11); },
+    buy:    ()=>{ const c=get(); if(!c) return; const t=c.currentTime; [880,1047,1319].forEach((f,i)=>tone(c,f,t+i*0.07,0.11,'sine',0.09)); },
+  };
+})();
+
 // ── Helpers ──
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const todayStr = () => new Date().toISOString().slice(0,10);
@@ -582,12 +608,13 @@ function App({ session }) {
     const newGold = prev.player.gold + amount;
     const wasLvl = getLvl(prev.player.xp);
     const newLvl = getLvl(newXp);
-    if (newLvl > wasLvl) setTimeout(() => toast(`⚡ LEVEL UP!  Уровень ${newLvl}`, 'lvl'), 300);
+    if (newLvl > wasLvl) setTimeout(() => { toast(`⚡ LEVEL UP!  Уровень ${newLvl}`, 'lvl'); SFX.levelUp(); }, 300);
     return { ...prev.player, xp:newXp, gold:newGold };
   };
 
   // ── Complete quest ──
   const completeQuest = useCallback((blockId, questId) => {
+    SFX.quest();
     setSt(p => {
       const blk = p.blocks.find(b=>b.id===blockId);
       if (!blk || blk.completed) return p;
@@ -608,6 +635,7 @@ function App({ session }) {
 
   // ── Complete daily ──
   const completeDaily = useCallback(id => {
+    SFX.daily();
     setSt(p => {
       const q = p.daily.find(d=>d.id===id);
       if (!q || q.done) return p;
@@ -618,6 +646,7 @@ function App({ session }) {
 
   // ── Buy reward ──
   const buyReward = useCallback(id => {
+    SFX.buy();
     setSt(p => {
       const r = p.rewards.find(r=>r.id===id);
       if (!r || r.bought || p.player.gold < r.cost) return p;
