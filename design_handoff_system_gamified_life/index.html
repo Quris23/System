@@ -800,6 +800,10 @@ function App({ session }) {
           ...q, title:data.title||q.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||q.reward
         })
       })}));
+    } else if (type === 'editDaily') {
+      setSt(p => ({...p, daily:p.daily.map(d => d.id!==modal.questId ? d : {
+        ...d, title:data.title||d.title, description:data.description||'', period:data.period||d.period, reward:parseInt(data.reward)||d.reward,
+      })}));
     } else if (type === 'addReward') {
       setSt(p => ({ ...p, rewards:[...p.rewards, {id:uid(), title:data.title, description:data.description||'', cost:parseInt(data.cost)||100, bought:false, repeatable:!!data.repeatable, count:0}] }));
     } else if (type === 'editPlayer') {
@@ -911,6 +915,7 @@ function App({ session }) {
             onComplete={completeDaily}
             onAdd={()=>setModal({type:'addDaily'})}
             onDelete={delDaily}
+            onEdit={q=>setModal({type:'editDaily', questId:q.id, data:{title:q.title, description:q.description, period:q.period||'daily', reward:String(q.reward)}})}
           />
         )}
         {tab==='shop' && (
@@ -1051,9 +1056,10 @@ function QuestModal({ qd, onComplete, onDelete, onEdit, onClose }) {
           <div style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px'}}>+{quest.reward} ✦</div>
         </div>
         {/* Buttons */}
-        <div style={{display:'flex',gap:'10px',padding:'0 28px 22px',justifyContent:'center'}}>
-          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',borderColor:'var(--red)',color:'var(--red)'}} onClick={onDelete}>УДАЛИТЬ</button>
-          {!quest.done && isActive && <button className="btn btn-gld" style={{flex:1,justifyContent:'center'}} onClick={onComplete}>✓ ВЫПОЛНИТЬ</button>}
+        <div style={{display:'flex',gap:'10px',padding:'0 28px 22px',justifyContent:'center',flexWrap:'wrap'}}>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',borderColor:'var(--red)',color:'var(--red)',minWidth:'80px'}} onClick={onDelete}>УДАЛИТЬ</button>
+          {!quest.done && <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',minWidth:'80px'}} onClick={onEdit}>ИЗМЕНИТЬ</button>}
+          {!quest.done && isActive && <button className="btn btn-gld" style={{flex:1,justifyContent:'center',minWidth:'100px'}} onClick={onComplete}>✓ ВЫПОЛНИТЬ</button>}
         </div>
       </div>
     </div>
@@ -1061,7 +1067,7 @@ function QuestModal({ qd, onComplete, onDelete, onEdit, onClose }) {
 }
 
 // ── RECURRING QUESTS VIEW ──
-function RecurringQuestModal({ quest, onComplete, onClose }) {
+function RecurringQuestModal({ quest, onComplete, onEdit, onClose }) {
   const due = isDue(quest);
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -1090,10 +1096,11 @@ function RecurringQuestModal({ quest, onComplete, onClose }) {
             </div>
           )}
         </div>
-        <div style={{display:'flex',gap:'12px',padding:'0 28px 24px',justifyContent:'center'}}>
-          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px'}} onClick={onClose}>ЗАКРЫТЬ</button>
+        <div style={{display:'flex',gap:'10px',padding:'0 28px 24px',justifyContent:'center',flexWrap:'wrap'}}>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px',minWidth:'80px'}} onClick={onClose}>ЗАКРЫТЬ</button>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px',minWidth:'80px'}} onClick={onEdit}>ИЗМЕНИТЬ</button>
           {due && (
-            <button className="btn btn-gld" style={{flex:1,justifyContent:'center',letterSpacing:'2px'}} onClick={onComplete}>✓ ВЫПОЛНЕНО</button>
+            <button className="btn btn-gld" style={{flex:1,justifyContent:'center',letterSpacing:'2px',minWidth:'100px'}} onClick={onComplete}>✓ ВЫПОЛНЕНО</button>
           )}
         </div>
       </div>
@@ -1101,7 +1108,7 @@ function RecurringQuestModal({ quest, onComplete, onClose }) {
   );
 }
 
-function DailyView({ quests, onComplete, onAdd, onDelete }) {
+function DailyView({ quests, onComplete, onAdd, onDelete, onEdit }) {
   const [selQuest, setSelQuest] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
   const due = quests.filter(isDue);
@@ -1112,6 +1119,7 @@ function DailyView({ quests, onComplete, onAdd, onDelete }) {
         <RecurringQuestModal
           quest={selQuest}
           onComplete={()=>{ onComplete(selQuest.id); setSelQuest(null); }}
+          onEdit={()=>{ onEdit(selQuest); setSelQuest(null); }}
           onClose={()=>setSelQuest(null)}
         />
       )}
@@ -1286,6 +1294,12 @@ const FORMS = {
       {k:'repeatable',  label:'Тип',             type:'checkbox', checkLabel:'Многоразовая (можно купить несколько раз)'},
     ]
   },
+  editDaily: { title:'Изменить квест', fields:[
+    {k:'title',       label:'Название',      type:'text', req:true},
+    {k:'description', label:'Описание',      type:'textarea'},
+    {k:'period',      label:'Периодичность', type:'periodSelect'},
+    {k:'reward',      label:'Награда (✦)',   type:'number', ph:'10'},
+  ]},
   editQuest: { title:'Редактировать задание', fields:[
     {k:'title',       label:'Название',    type:'text', req:true},
     {k:'description', label:'Описание',    type:'textarea'},
