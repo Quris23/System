@@ -2029,41 +2029,41 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       (systems||[]).forEach((sys,si)=>{
         const star=stars[si]; if(!star) return;
         const isAct=sys.id===activeId;
-        const hT=starHoverT[si]||0;            // 0→1: how much THIS star is hovered
-        const dimT=globalHoverT*(1-hT);        // 0→1: how much this star is dimmed by others
+        const hT=starHoverT[si]||0;                        // 1 = this star is hovered
+        const connT=globalHoverT*(1-hT)*0.55;              // connected stars glow at 55%
+        const effectT=Math.max(hT,connT);                  // combined glow intensity
         const ownCol=sys.color||'#ffd700';
-        const drawCol=lerpHex(ownCol,HOV_COL,hT);
+        const drawCol=lerpHex(ownCol,HOV_COL,effectT);
         const starR=20+Math.min(sys.reward||0,400)/15;
-        // Orbit rings (fade with dimT)
+        // Orbit rings
         sys.blocks.forEach(b=>{
           const orb=planetOrbits[b.id]; if(!orb) return;
           ctx.beginPath(); ctx.arc(star.x,star.y,orb.radius,0,Math.PI*2);
-          const ringA=lerp(isAct?0.09:0.03, 0.01, dimT);
+          const ringA=lerp(isAct?0.09:0.03, 0.07, effectT);
           ctx.strokeStyle=isAct?hexRgba(drawCol,ringA):`rgba(255,255,255,${ringA*0.4})`;
           ctx.lineWidth=1; ctx.setLineDash([2,9]); ctx.stroke(); ctx.setLineDash([]);
         });
         ctx.save(); ctx.translate(star.x,star.y);
-        // Shadow glow for hovered star
-        if(hT>0.01){ ctx.shadowColor=HOV_COL; ctx.shadowBlur=lerp(0,30,hT); }
-        // Outer glow gradient
-        const glowA=lerp(isAct?0.28:0.15, 1.0, hT)*lerp(1,0.08,dimT);
+        // Glow shadow — hovered star stronger, connected softer
+        if(effectT>0.01){ ctx.shadowColor=HOV_COL; ctx.shadowBlur=lerp(0, hT>connT?30:16, effectT); }
+        // Outer halo gradient
+        const glowA=lerp(isAct?0.28:0.15, hT>connT?1.0:0.6, effectT);
         const g=ctx.createRadialGradient(0,0,starR*0.3,0,0,starR*3.5);
         g.addColorStop(0,hexRgba(drawCol,glowA));
         g.addColorStop(1,hexRgba(drawCol,0));
         ctx.beginPath(); ctx.arc(0,0,starR*3.5,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
         // Body
         ctx.beginPath(); ctx.arc(0,0,starR,0,Math.PI*2);
-        const bodyA=lerp(isAct?0.97:0.35, 1.0, hT)*lerp(1,0.08,dimT);
+        const bodyA=lerp(isAct?0.97:0.35, hT>connT?1.0:0.7, effectT);
         ctx.fillStyle=sys.completed?`rgba(16,185,129,${bodyA})`:hexRgba(drawCol,bodyA);
         ctx.fill();
-        const strokeA=lerp(isAct?0.95:0.4, 1.0, hT)*lerp(1,0.08,dimT);
+        const strokeA=lerp(isAct?0.95:0.4, hT>connT?1.0:0.75, effectT);
         ctx.strokeStyle=sys.completed?`rgba(16,185,129,${strokeA})`:hexRgba(drawCol,strokeA);
-        ctx.lineWidth=lerp(1.5,2.5,hT); ctx.stroke();
+        ctx.lineWidth=lerp(1.5, hT>connT?2.5:2.0, effectT); ctx.stroke();
         ctx.shadowBlur=0;
         // Label
-        const labelA=lerp(0.8, 0.1, dimT);
         ctx.font='700 10px Orbitron,sans-serif';
-        ctx.fillStyle=hT>0.01?`rgba(39,231,245,${lerp(0.8,1,hT)})`:`rgba(255,255,255,${labelA})`;
+        ctx.fillStyle=effectT>0.01?`rgba(39,231,245,${lerp(0.8,1,effectT)})`:'rgba(255,255,255,0.8)';
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(sys.title.toUpperCase().slice(0,12),0,starR+15);
         ctx.restore();
