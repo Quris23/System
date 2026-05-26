@@ -674,6 +674,10 @@ const migrateRecurring = (arr = []) => arr.map(q => {
   return { ...q, period: 'daily', lastDone: q.done ? todayStr() : null, doneCount: q.done ? 1 : 0 };
 });
 
+const STAR_PALETTE = ['#ffd700','#87ceeb','#ff6b35','#ff4488','#aaddff','#ffaa44','#c084fc','#44ffcc','#ff8844','#ffffff'];
+const rndStarColor = () => STAR_PALETTE[Math.floor(Math.random()*STAR_PALETTE.length)];
+const hexRgba = (hex, a) => { const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return `rgba(${r},${g},${b},${a})`; };
+
 const migrateSystems = (state) => {
   let s = state;
   if (s.systems === undefined) {
@@ -684,7 +688,11 @@ const migrateSystems = (state) => {
         : [],
     };
   } else {
-    s = { ...s, systems: s.systems.map(sys => sys.reward !== undefined ? sys : { ...sys, reward: 0 }) };
+    s = { ...s, systems: s.systems.map(sys => ({
+      ...sys,
+      reward: sys.reward ?? 0,
+      color: sys.color || rndStarColor(),
+    })) };
   }
   return s;
 };
@@ -806,7 +814,7 @@ function App({ session }) {
     if (!modal) return;
     const { type } = modal;
     if (type === 'addSystem') {
-      const ns = { id:uid(), title:data.title||'Система', description:data.description||'', reward:parseInt(data.reward)||0, completed:false, blocks:[] };
+      const ns = { id:uid(), title:data.title||'Система', description:data.description||'', reward:parseInt(data.reward)||0, color:rndStarColor(), completed:false, blocks:[] };
       setSt(p => ({ ...p, systems:[...p.systems, ns] }));
     } else if (type === 'addBlock') {
       const nb = { id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||0, completed:false, quests:[] };
@@ -1883,7 +1891,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
   const containerRef = React.useRef(null);
   const stRef = React.useRef({
     systems:[], activeId:null, animId:null, zoom:1,
-    stars:[],
+    stars:[], starVels:[], starHomes:[],
     planetAngles:{}, planetOrbits:{}, planetPos:{},
     satAngles:{}, satSpeeds:{}, satPos:{},
   });
@@ -1902,10 +1910,14 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     const buildStars = () => {
       const w=canvas.width, h=canvas.height;
       const N=(stRef.current.systems||[]).length;
-      const s=[];
-      if(N===1){s.push({x:w/2,y:h/2});}
-      else{for(let i=0;i<N;i++){const a=(i/N)*Math.PI*2-Math.PI/2,r=Math.min(w,h)*0.30;s.push({x:w/2+Math.cos(a)*r,y:h/2+Math.sin(a)*r});}}
-      stRef.current.stars=s;
+      const homes=[];
+      if(N===1){homes.push({x:w/2,y:h/2});}
+      else{for(let i=0;i<N;i++){const a=(i/N)*Math.PI*2-Math.PI/2,r=Math.min(w,h)*0.30;homes.push({x:w/2+Math.cos(a)*r,y:h/2+Math.sin(a)*r});}}
+      stRef.current.starHomes=homes;
+      if(stRef.current.stars.length!==N){
+        stRef.current.stars=homes.map(h=>({...h}));
+        stRef.current.starVels=homes.map(()=>({vx:0,vy:0}));
+      }
     };
 
     const resize = () => { canvas.width=con.clientWidth; canvas.height=con.clientHeight; buildStars(); };
@@ -1914,10 +1926,26 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
 
     const tick = () => {
       const st=stRef.current;
-      const{systems,activeId,stars,planetAngles,planetOrbits,satAngles,satSpeeds}=st;
+      const{systems,activeId,stars,starVels,starHomes,planetAngles,planetOrbits,satAngles,satSpeeds}=st;
       const w=canvas.width,h=canvas.height;
       if(stars.length!==(systems||[]).length) buildStars();
       const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
+
+      // ── Star physics (repulsion + spring to home) ──
+      for(let i=0;i<stars.length;i++){
+        if(!starVels[i]) starVels[i]={vx:0,vy:0};
+        let fx=0,fy=0;
+        for(let j=0;j<stars.length;j++){
+          if(i===j) continue;
+          const dx=stars[i].x-stars[j].x,dy=stars[i].y-stars[j].y;
+          const d=Math.sqrt(dx*dx+dy*dy)||1;
+          const f=Math.min(55000/(d*d),280);
+          fx+=dx/d*f; fy+=dy/d*f;
+        }
+        if(starHomes[i]){fx+=(starHomes[i].x-stars[i].x)*0.012;fy+=(starHomes[i].y-stars[i].y)*0.012;}
+        starVels[i].vx=(starVels[i].vx+fx)*0.85; starVels[i].vy=(starVels[i].vy+fy)*0.85;
+        stars[i]={x:stars[i].x+starVels[i].vx, y:stars[i].y+starVels[i].vy};
+      }
 
       // ── Planet orbits ──
       const planetPos={};
@@ -1963,26 +1991,36 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       ctx.save();
       ctx.translate(w/2,h/2); ctx.scale(st.zoom,st.zoom); ctx.translate(-w/2,-h/2);
 
-      // Stars + planet orbit rings
+      // ── Star–star dashed lines ──
+      for(let i=0;i<stars.length;i++){
+        for(let j=i+1;j<stars.length;j++){
+          ctx.beginPath(); ctx.moveTo(stars[i].x,stars[i].y); ctx.lineTo(stars[j].x,stars[j].y);
+          ctx.strokeStyle='rgba(255,255,255,0.055)';
+          ctx.lineWidth=1; ctx.setLineDash([5,12]); ctx.stroke(); ctx.setLineDash([]);
+        }
+      }
+
+      // ── Stars + planet orbit rings ──
       (systems||[]).forEach((sys,si)=>{
         const star=stars[si]; if(!star) return;
         const isAct=sys.id===activeId;
+        const col=sys.color||'#ffd700';
         const starR=20+Math.min(sys.reward||0,400)/15;
         sys.blocks.forEach(b=>{
           const orb=planetOrbits[b.id]; if(!orb) return;
           ctx.beginPath(); ctx.arc(star.x,star.y,orb.radius,0,Math.PI*2);
-          ctx.strokeStyle=isAct?'rgba(15,168,245,0.07)':'rgba(255,255,255,0.03)';
+          ctx.strokeStyle=isAct?hexRgba(col,0.09):'rgba(255,255,255,0.03)';
           ctx.lineWidth=1; ctx.setLineDash([2,9]); ctx.stroke(); ctx.setLineDash([]);
         });
         ctx.save(); ctx.translate(star.x,star.y);
         const g=ctx.createRadialGradient(0,0,starR*0.3,0,0,starR*3.5);
-        g.addColorStop(0,isAct?'rgba(255,220,80,0.95)':'rgba(255,200,60,0.28)');
-        g.addColorStop(1,'rgba(255,200,50,0)');
+        g.addColorStop(0,hexRgba(col,isAct?0.95:0.28));
+        g.addColorStop(1,hexRgba(col,0));
         ctx.beginPath(); ctx.arc(0,0,starR*3.5,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
         ctx.beginPath(); ctx.arc(0,0,starR,0,Math.PI*2);
-        ctx.fillStyle=sys.completed?'rgba(16,185,129,0.9)':isAct?'rgba(255,200,50,0.97)':'rgba(80,60,10,0.55)';
+        ctx.fillStyle=sys.completed?'rgba(16,185,129,0.9)':hexRgba(col,isAct?0.97:0.35);
         ctx.fill();
-        ctx.strokeStyle=sys.completed?'#10b981':isAct?'rgba(255,230,80,0.95)':'rgba(120,90,20,0.45)';
+        ctx.strokeStyle=sys.completed?'#10b981':hexRgba(col,isAct?0.95:0.4);
         ctx.lineWidth=1.5; ctx.stroke();
         ctx.font='700 10px Orbitron,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.8)';
         ctx.textAlign='center'; ctx.textBaseline='middle';
