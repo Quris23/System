@@ -422,6 +422,71 @@ body::after{
   pointer-events:none;z-index:0;
 }
 
+/* ── MOBILE ── */
+@media (max-width:640px){
+  /* Header wrap */
+  #hdr{
+    height:auto;min-height:52px;
+    flex-wrap:wrap;padding:7px 10px;gap:5px 8px;
+  }
+  .hdr-div{display:none}
+  #logo{font-size:13px;letter-spacing:2px}
+  #player-btn{order:0;padding:3px 5px}
+  #pname{font-size:10px}
+  #lvl-badge{font-size:8px;padding:2px 6px}
+  /* XP goes to second row */
+  #xp-wrap{order:9;flex-basis:100%;gap:6px}
+  #xp-lbl{display:none}
+  #xp-num{font-size:8px}
+  #gold-display{order:2;padding:4px 9px;margin-left:auto}
+  #gold-num{font-size:13px}
+  #logout-btn{order:3;padding:4px 8px;font-size:10px;letter-spacing:1px}
+
+  /* Nav — icons only */
+  #nav{padding:0;gap:0}
+  .tab{flex:1;padding:0 4px;font-size:0;flex-direction:column;gap:3px;justify-content:center}
+  .tab-ic{font-size:19px}
+
+  /* Blocks — stack vertically */
+  .bv-layout{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .bv-sidebar{
+    border-right:none;border-bottom:1px solid var(--bd);
+    max-height:38vh;padding:10px;gap:6px;
+  }
+  .bv-detail{padding:14px;gap:16px}
+  .bdet-hdr{flex-direction:column;gap:10px}
+  .bdet-title{font-size:17px}
+  .bdet-actions{flex-direction:row;flex-wrap:wrap;gap:8px;align-items:center}
+  .rm-nwrap{width:110px}
+  .rm-conn{width:36px}
+  .rm-node{width:52px;height:52px;font-size:15px}
+  .rm-info{width:110px}
+
+  /* Modal */
+  .modal{padding:18px;width:calc(100vw - 20px)}
+  .modal-title{margin:-18px -18px 18px -18px;padding:12px 18px}
+  .modal-acts{flex-wrap:wrap}
+  .modal-acts .btn{flex:1;justify-content:center}
+
+  /* Daily */
+  .dv-layout{padding:12px;gap:10px}
+  .view-hdr{flex-direction:column;gap:8px}
+  .view-title{font-size:15px;letter-spacing:1px}
+
+  /* Shop */
+  .sv-layout{padding:12px;gap:12px}
+  .rwd-grid{grid-template-columns:1fr}
+
+  /* Toasts — move to bottom */
+  #toasts{top:auto;bottom:16px;right:10px;left:10px;align-items:stretch}
+  .toast{text-align:center}
+}
+
+@media (max-width:380px){
+  #logo{font-size:11px;letter-spacing:1.5px}
+  .tab-ic{font-size:17px}
+  .bv-sidebar{max-height:32vh}
+}
 </style>
 </head>
 <body>
@@ -645,7 +710,7 @@ function App({ session }) {
           <span id="gold-icon">✦</span>
           <span id="gold-num">{st.player.gold}</span>
         </div>
-        <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'11px',flexShrink:0}} onClick={()=>sb.auth.signOut()}>ВЫХОД</button>
+        <button id="logout-btn" className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'11px',flexShrink:0}} onClick={()=>sb.auth.signOut()}>ВЫХОД</button>
       </header>
 
       {/* Nav */}
@@ -1410,9 +1475,12 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
           <button className="btn btn-pur" onClick={onAddBlock}>Создать первый</button>
         </div>
       ) : (
-        <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block'}}
+        <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none'}}
           onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
           onMouseLeave={()=>{ stRef.current.dragging=null; dragStart.current=null; }}
+          onTouchStart={e=>{ e.preventDefault(); const t=e.touches[0]; onMD({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}}); }}
+          onTouchMove={e=>{ e.preventDefault(); const t=e.touches[0]; onMM({clientX:t.clientX,clientY:t.clientY}); }}
+          onTouchEnd={e=>{ e.preventDefault(); const t=e.changedTouches[0]; onMU({clientX:t.clientX,clientY:t.clientY}); }}
         />
       )}
     </div>
