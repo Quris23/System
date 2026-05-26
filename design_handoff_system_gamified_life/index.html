@@ -674,10 +674,20 @@ const migrateRecurring = (arr = []) => arr.map(q => {
   return { ...q, period: 'daily', lastDone: q.done ? todayStr() : null, doneCount: q.done ? 1 : 0 };
 });
 
+const migrateSystems = (state) => {
+  if (state.systems !== undefined) return state;
+  return {
+    ...state,
+    systems: (state.blocks && state.blocks.length > 0)
+      ? [{ id: uid(), title: 'Система 1', description: '', completed: false, blocks: state.blocks }]
+      : [],
+  };
+};
+
 // ── Default state ──
 const DEF = {
   player: { name:'ИГРОК', xp:0, gold:0 },
-  blocks: [],
+  systems: [],
   daily: [],
   rewards: [],
 };
@@ -698,10 +708,11 @@ function App({ session }) {
       .then(({ data, error }) => {
         console.log('[SYS] load data:', data, 'error:', error);
         if (data?.state) {
-          const s = data.state;
+          let s = data.state;
+          s = migrateSystems(s);
           setSt({ ...DEF, ...s, daily: migrateRecurring(s.daily) });
-          const active = (s.blocks || []).find(b => !b.completed);
-          if (active) setSelBlock(active.id);
+          const activeSys = (s.systems || []).find(sys => !sys.completed);
+          if (activeSys && activeSys.blocks.length > 0) setSelBlock(activeSys.blocks[0].id);
         }
         setLoaded(true);
       });
@@ -734,21 +745,28 @@ function App({ session }) {
   };
 
   // ── Complete quest ──
-  const completeQuest = useCallback((blockId, questId) => {
+  const completeQuest = useCallback((systemId, blockId, questId) => {
     SFX.quest();
     setSt(p => {
-      const blk = p.blocks.find(b=>b.id===blockId);
+      const sys = p.systems.find(s=>s.id===systemId);
+      if (!sys || sys.completed) return p;
+      const blk = sys.blocks.find(b=>b.id===blockId);
       if (!blk || blk.completed) return p;
       const q = blk.quests.find(q=>q.id===questId);
       if (!q || q.done) return p;
       const questRew = q.reward || 25;
       const newQuests = blk.quests.map(q2 => q2.id===questId ? {...q2,done:true} : q2);
-      const allDone = newQuests.every(q2=>q2.done);
-      const blockRew = allDone ? (blk.reward || 0) : 0;
+      const blockAllDone = newQuests.every(q2=>q2.done);
+      const blockRew = blockAllDone ? (blk.reward || 0) : 0;
+      const newBlock = {...blk, quests:newQuests, completed:blockAllDone};
+      const newSysBlocks = sys.blocks.map(b => b.id!==blockId ? b : newBlock);
+      const sysAllDone = newSysBlocks.every(b=>b.completed);
+      const newSys = {...sys, blocks:newSysBlocks, completed:sysAllDone};
+      const newSystems = p.systems.map(s => s.id!==systemId ? s : newSys);
       setTimeout(() => toast(`+${questRew} ✦  Задание выполнено!`), 0);
-      if (allDone) setTimeout(() => toast(`🏆  Блок «${blk.title}» пройден!${blockRew>0?' +'+blockRew+' ✦':''}`, 'lvl'), 600);
-      const newBlocks = p.blocks.map(b => b.id!==blockId ? b : {...b, quests:newQuests, completed:allDone});
-      return {...p, player:earn(p, questRew + blockRew), blocks:newBlocks};
+      if (blockAllDone) setTimeout(() => toast(`🌍 Планета «${blk.title}» завершена!${blockRew>0?' +'+blockRew+' ✦':''}`, 'lvl'), 600);
+      if (sysAllDone) setTimeout(() => toast(`⭐ Система «${sys.title}» завершена!`, 'lvl'), 1200);
+      return {...p, player:earn(p, questRew + blockRew), systems:newSystems};
     });
   }, [toast]);
 
@@ -782,20 +800,27 @@ function App({ session }) {
   const submit = useCallback(data => {
     if (!modal) return;
     const { type } = modal;
-    if (type === 'addBlock') {
+    if (type === 'addSystem') {
+      const ns = { id:uid(), title:data.title||'Система', description:data.description||'', completed:false, blocks:[] };
+      setSt(p => ({ ...p, systems:[...p.systems, ns] }));
+    } else if (type === 'addBlock') {
       const nb = { id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||0, completed:false, quests:[] };
-      setSt(p => ({ ...p, blocks:[...p.blocks, nb] }));
+      setSt(p => ({ ...p, systems:p.systems.map(s => s.id!==modal.systemId ? s : {...s, blocks:[...s.blocks, nb]}) }));
       setSelBlock(nb.id);
     } else if (type === 'addQuest') {
-      setSt(p => ({ ...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
-        ...b, quests:[...b.quests, {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||25, done:false}]
+      setSt(p => ({ ...p, systems:p.systems.map(s => s.id!==modal.systemId ? s : {
+        ...s, blocks:s.blocks.map(b => b.id!==modal.blockId ? b : {
+          ...b, quests:[...b.quests, {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||25, done:false}]
+        })
       })}));
     } else if (type === 'addDaily') {
       setSt(p => ({ ...p, daily:[...p.daily, {id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||10, period:data.period||'daily', lastDone:null, doneCount:0}] }));
     } else if (type === 'editQuest') {
-      setSt(p => ({ ...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
-        ...b, quests:b.quests.map(q => q.id!==modal.questId ? q : {
-          ...q, title:data.title||q.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||q.reward
+      setSt(p => ({ ...p, systems:p.systems.map(s => s.id!==modal.systemId ? s : {
+        ...s, blocks:s.blocks.map(b => b.id!==modal.blockId ? b : {
+          ...b, quests:b.quests.map(q => q.id!==modal.questId ? q : {
+            ...q, title:data.title||q.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||q.reward
+          })
         })
       })}));
     } else if (type === 'addReward') {
@@ -811,8 +836,8 @@ function App({ session }) {
   }, [modal]);
 
   // ── Deletes ──
-  const delBlock = id => { setSt(p=>({...p,blocks:p.blocks.filter(b=>b.id!==id)})); if(selBlock===id) setSelBlock(null); };
-  const delQuest = (bid,qid) => setSt(p=>({...p,blocks:p.blocks.map(b=>b.id!==bid?b:{...b,quests:b.quests.filter(q=>q.id!==qid)})}));
+  const delBlock = (sid, bid) => { setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.filter(b=>b.id!==bid)})})); if(selBlock===bid) setSelBlock(null); };
+  const delQuest = (sid,bid,qid) => setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.map(b=>b.id!==bid?b:{...b,quests:b.quests.filter(q=>q.id!==qid)})})}));
   const delDaily = id => setSt(p=>({...p,daily:p.daily.filter(d=>d.id!==id)}));
   const delReward = id => setSt(p=>({...p,rewards:p.rewards.filter(r=>r.id!==id)}));
 
@@ -820,7 +845,7 @@ function App({ session }) {
   const xpS = xpForLvl(level);
   const xpN = xpForNext(level);
   const xpPct = Math.min(((st.player.xp - xpS) / (xpN - xpS)) * 100, 100);
-  const activeBlock = st.blocks.find(b=>!b.completed);
+  const activeSystem = st.systems.find(s=>!s.completed);
 
   if (!loaded) return (
     <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)'}}>
@@ -842,9 +867,9 @@ function App({ session }) {
       {questDetail && (
         <QuestModal
           qd={questDetail}
-          onComplete={()=>{ completeQuest(questDetail.blockId, questDetail.quest.id); setQuestDetail(null); }}
-          onDelete={()=>{ delQuest(questDetail.blockId, questDetail.quest.id); setQuestDetail(null); }}
-          onEdit={()=>{ setModal({type:'editQuest', blockId:questDetail.blockId, questId:questDetail.quest.id, data:{title:questDetail.quest.title, description:questDetail.quest.description, deadline:questDetail.quest.deadline, reward:String(questDetail.quest.reward)}}); setQuestDetail(null); }}
+          onComplete={()=>{ completeQuest(questDetail.systemId, questDetail.blockId, questDetail.quest.id); setQuestDetail(null); }}
+          onDelete={()=>{ delQuest(questDetail.systemId, questDetail.blockId, questDetail.quest.id); setQuestDetail(null); }}
+          onEdit={()=>{ setModal({type:'editQuest', systemId:questDetail.systemId, blockId:questDetail.blockId, questId:questDetail.quest.id, data:{title:questDetail.quest.title, description:questDetail.quest.description, deadline:questDetail.quest.deadline, reward:String(questDetail.quest.reward)}}); setQuestDetail(null); }}
           onClose={()=>setQuestDetail(null)}
         />
       )}
@@ -872,7 +897,7 @@ function App({ session }) {
       {/* Nav */}
       <nav id="nav">
         {[
-          {id:'blocks', label:'Блоки', ic:'◈'},
+          {id:'blocks', label:'Системы', ic:'✦'},
           {id:'graph',  label:'Граф', ic:'⬡'},
           {id:'daily',  label:'Регулярные', ic:'⊕'},
           {id:'shop',   label:'Магазин', ic:'◆'},
@@ -887,25 +912,28 @@ function App({ session }) {
       <div id="main">
         {tab==='blocks' && (
           <BlocksView
-            blocks={st.blocks}
-            activeBlock={activeBlock}
+            systems={st.systems}
+            activeSystem={activeSystem}
             selBlock={selBlock}
             setSelBlock={setSelBlock}
-            onAddBlock={()=>setModal({type:'addBlock'})}
-            onAddQuest={bid=>setModal({type:'addQuest', blockId:bid})}
-            onDelBlock={delBlock}
-            onSaveBlock={(blockId,data)=>setSt(p=>({...p,blocks:p.blocks.map(b=>b.id!==blockId?b:{...b,...data})}))}
-            onQuestClick={(quest,blockId,isActive)=>setQuestDetail({quest,blockId,isActive})}
+            onAddSystem={()=>setModal({type:'addSystem'})}
+            onDelSystem={id=>setSt(p=>({...p,systems:p.systems.filter(s=>s.id!==id)}))}
+            onSaveSystem={(id,data)=>setSt(p=>({...p,systems:p.systems.map(s=>s.id!==id?s:{...s,...data})}))}
+            onAddBlock={sid=>setModal({type:'addBlock',systemId:sid})}
+            onDelBlock={(sid,bid)=>delBlock(sid,bid)}
+            onSaveBlock={(sid,bid,data)=>setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.map(b=>b.id!==bid?b:{...b,...data})})}))}
+            onAddQuest={(sid,bid)=>setModal({type:'addQuest',systemId:sid,blockId:bid})}
+            onQuestClick={(quest,systemId,blockId,isActive)=>setQuestDetail({quest,systemId,blockId,isActive})}
           />
         )}
         {tab==='graph' && (
           <GraphView
-            blocks={st.blocks}
-            activeBlock={activeBlock}
-            onAddBlock={()=>setModal({type:'addBlock'})}
+            systems={st.systems}
+            activeSystem={activeSystem}
+            onAddSystem={()=>setModal({type:'addSystem'})}
             setSelBlock={setSelBlock}
             setTab={setTab}
-            onQuestClick={(quest,blockId,isActive)=>setQuestDetail({quest,blockId,isActive})}
+            onQuestClick={(quest,systemId,blockId,isActive)=>setQuestDetail({quest,systemId,blockId,isActive})}
           />
         )}
         {tab==='daily' && (
@@ -934,53 +962,128 @@ function App({ session }) {
   );
 }
 
+// ── SYSTEM HEADER (inline-editable) ──
+function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSaveSystem }) {
+  const [editField, setEditField] = useState(null);
+  const [val, setVal] = useState('');
+  const ic = sys.completed ? '✅' : isActive ? '⭐' : '🔒';
+  const statusCls = sys.completed ? 'st-done' : isActive ? 'st-active' : 'st-locked';
+  const statusTxt = sys.completed ? 'ЗАВЕРШЕНА' : isActive ? 'АКТИВНА' : 'ЗАБЛОКИРОВАНА';
+
+  const start = (field, cur) => { setEditField(field); setVal(String(cur)); };
+  const cancel = () => setEditField(null);
+  const save = (field, v) => {
+    setEditField(null);
+    const d = { title: sys.title, description: sys.description || '' };
+    if (field === 'title') { if (!v.trim()) return; d.title = v.trim(); }
+    if (field === 'desc') d.description = v;
+    onSaveSystem(d);
+  };
+  const ib = { background:'transparent', border:'none', outline:'none', padding:0 };
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'4px',padding:'10px 12px',
+      background: isActive ? 'rgba(15,168,245,0.06)' : sys.completed ? 'rgba(16,185,129,0.05)' : 'rgba(4,8,15,0.4)',
+      borderRadius:'6px', border:'1px solid ' + (isActive ? 'rgba(15,168,245,0.3)' : sys.completed ? 'rgba(16,185,129,0.2)' : 'var(--bd)'),
+      opacity: sys.completed ? 0.65 : 1,
+      marginBottom:'4px',
+    }}>
+      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+        <span style={{fontSize:'14px',flexShrink:0}}>{ic}</span>
+        {editField==='title' ? (
+          <input autoFocus value={val} onChange={e=>setVal(e.target.value)}
+            onBlur={()=>save('title',val)}
+            onKeyDown={e=>{ if(e.key==='Enter') save('title',val); if(e.key==='Escape') cancel(); }}
+            style={{...ib, fontFamily:'var(--hud)', fontSize:'12px', fontWeight:700, letterSpacing:'1px', color:'var(--txt)', flex:1, borderBottom:'1px solid var(--pur)'}} />
+        ) : (
+          <span onClick={()=>!sys.completed&&start('title',sys.title)}
+            style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'1px',flex:1,
+              cursor:sys.completed?'default':'text', color: isActive ? 'var(--pur)' : sys.completed ? 'var(--grn)' : 'var(--mut2)'}}>
+            {sys.title}
+          </span>
+        )}
+        <span className={`status-tag ${statusCls}`} style={{fontSize:'8px',padding:'2px 6px'}}>{statusTxt}</span>
+        {!sys.completed && !isLocked && (
+          <button className="ic-btn add" title="Добавить блок" onClick={e=>{e.stopPropagation();onAddBlock();}}>＋</button>
+        )}
+        <button className="ic-btn" title="Удалить систему" onClick={e=>{e.stopPropagation();onDelSystem();}}>✕</button>
+      </div>
+    </div>
+  );
+}
+
 // ── BLOCKS VIEW ──
-function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, onAddQuest, onDelBlock, onQuestClick, onSaveBlock }) {
-  const selData = blocks.find(b=>b.id===selBlock);
-  const activeId = activeBlock?.id;
+function BlocksView({ systems, activeSystem, selBlock, setSelBlock, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick }) {
+  const activeSystemId = activeSystem?.id;
+  // Find selected block across all systems
+  let selData = null, selSystemId = null;
+  for (const sys of systems) {
+    const b = sys.blocks.find(b=>b.id===selBlock);
+    if (b) { selData = b; selSystemId = sys.id; break; }
+  }
 
   return (
     <div className="bv-layout">
       {/* Sidebar */}
       <div className="bv-sidebar">
         <div className="bv-sidebar-hdr">
-          <span className="sidebar-title">Блоки</span>
-          <button className="btn btn-pur" style={{padding:'5px 10px',fontSize:'11px'}} onClick={onAddBlock}>+ Блок</button>
+          <span className="sidebar-title">Системы</span>
+          <button className="btn btn-pur" style={{padding:'5px 10px',fontSize:'11px'}} onClick={onAddSystem}>+ Система</button>
         </div>
 
-        {blocks.length === 0 && (
+        {systems.length === 0 && (
           <div className="empty" style={{padding:'36px 0'}}>
-            <div className="empty-ic">◈</div>
-            <div className="empty-txt">Нет блоков</div>
+            <div className="empty-ic">✦</div>
+            <div className="empty-txt">Нет систем</div>
           </div>
         )}
 
-        {blocks.map((b, i) => {
-          const isActive = b.id === activeId;
-          const isLocked = !b.completed && !isActive;
-          const done = b.quests.filter(q=>q.done).length;
-          const total = b.quests.length;
-          const pct = total > 0 ? (done/total)*100 : 0;
-          let cls = 'blk-card';
-          if (b.id===selBlock) cls+=' blk-sel';
-          if (isActive) cls+=' blk-active';
-          if (b.completed) cls+=' blk-done';
-          if (isLocked) cls+=' blk-locked';
-
+        {systems.map((sys) => {
+          const isActive = sys.id === activeSystemId;
+          const isLocked = !sys.completed && !isActive;
           return (
-            <div key={b.id} className={cls} onClick={()=>setSelBlock(b.id)}>
-              <div className="blk-hdr">
-                <span className="blk-ic">{b.completed?'✅':isActive?'⚡':'🔒'}</span>
-                <span className="blk-name">{b.title}</span>
-                <button className="ic-btn add" title="Добавить задание" onClick={e=>{e.stopPropagation();onAddQuest(b.id);}}>＋</button>
-                <button className="ic-btn" title="Удалить" onClick={e=>{e.stopPropagation();onDelBlock(b.id);}}>✕</button>
-              </div>
-              {total > 0 && (
-                <>
-                  <div className="blk-prog-txt">{done} / {total} задания</div>
-                  <div className="blk-progbar"><div className="blk-progfill" style={{width:`${pct}%`}} /></div>
-                </>
-              )}
+            <div key={sys.id}>
+              <SystemHeader
+                sys={sys}
+                isActive={isActive}
+                isLocked={isLocked}
+                onAddBlock={()=>onAddBlock(sys.id)}
+                onDelSystem={()=>onDelSystem(sys.id)}
+                onSaveSystem={data=>onSaveSystem(sys.id,data)}
+              />
+              {sys.blocks.map((b) => {
+                const blockActive = isActive;
+                const blockLocked = isLocked;
+                const done = b.quests.filter(q=>q.done).length;
+                const total = b.quests.length;
+                const pct = total > 0 ? (done/total)*100 : 0;
+                let cls = 'blk-card';
+                if (b.id===selBlock) cls+=' blk-sel';
+                if (blockActive && !b.completed) cls+=' blk-active';
+                if (b.completed) cls+=' blk-done';
+                if (blockLocked) cls+=' blk-locked';
+
+                return (
+                  <div key={b.id} className={cls}
+                    style={{marginLeft:'12px',marginBottom:'6px',cursor:blockLocked?'not-allowed':'pointer'}}
+                    onClick={()=>!blockLocked&&setSelBlock(b.id)}>
+                    <div className="blk-hdr">
+                      <span className="blk-ic">{b.completed?'✅':blockActive?'🌍':'🔒'}</span>
+                      <span className="blk-name">{b.title}</span>
+                      {!blockLocked && !b.completed && (
+                        <button className="ic-btn add" title="Добавить задание" onClick={e=>{e.stopPropagation();onAddQuest(sys.id,b.id);}}>＋</button>
+                      )}
+                      <button className="ic-btn" title="Удалить" onClick={e=>{e.stopPropagation();onDelBlock(sys.id,b.id);}}>✕</button>
+                    </div>
+                    {total > 0 && (
+                      <>
+                        <div className="blk-prog-txt">{done} / {total} задания</div>
+                        <div className="blk-progbar"><div className="blk-progfill" style={{width:`${pct}%`}} /></div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -990,16 +1093,16 @@ function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, on
       <div className="bv-detail">
         {!selData ? (
           <div className="empty">
-            <div className="empty-ic">◈</div>
-            <div className="empty-txt">Выберите блок</div>
+            <div className="empty-ic">✦</div>
+            <div className="empty-txt">Выберите планету</div>
           </div>
         ) : (
           <BlockDetail
             block={selData}
-            isActive={selData.id === activeId}
-            onAddQuest={()=>onAddQuest(selData.id)}
-            onQuestClick={(q)=>onQuestClick(q, selData.id, selData.id===activeId)}
-            onSaveBlock={data=>onSaveBlock(selData.id, data)}
+            isActive={selSystemId === activeSystemId && !selData.completed}
+            onAddQuest={()=>onAddQuest(selSystemId, selData.id)}
+            onQuestClick={(q)=>onQuestClick(q, selSystemId, selData.id, selSystemId===activeSystemId&&!selData.completed)}
+            onSaveBlock={data=>onSaveBlock(selSystemId, selData.id, data)}
           />
         )}
       </div>
@@ -1419,6 +1522,13 @@ function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onEdit, onToast }) {
 
 // ── FORM MODAL ──
 const FORMS = {
+  addSystem: {
+    title:'Новая Система',
+    fields:[
+      {k:'title',       label:'Название',  type:'text', req:true},
+      {k:'description', label:'Описание',  type:'textarea'},
+    ]
+  },
   addBlock: {
     title:'Новый Блок',
     fields:[
@@ -1630,26 +1740,40 @@ function QuestGraph({ quests, isActive, onQuestClick, onAddQuest }) {
   );
 }
 
-// ── GRAPH VIEW — force-directed canvas + planet/satellite ──
-function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQuestClick }) {
+// ── GRAPH VIEW — force-directed canvas + solar system (stars + planets + satellites) ──
+function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setTab, onQuestClick }) {
   const canvasRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const stRef = React.useRef({ nodes:[], blocks, activeId:activeBlock?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:600000, spring:0.45, zoom:1 });
-  const [sliders, setSliders] = React.useState({ repulsion:600000, spring:0.45 });
+  const stRef = React.useRef({ nodes:[], systems:[], stars:[], activeId:activeSystem?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:600000, spring:0.45, zoom:1 });
   const dragStart = React.useRef(null);
 
+  // Sync systems/activeId into stRef and rebuild nodes
   React.useEffect(() => {
-    stRef.current.blocks = blocks;
-    stRef.current.activeId = activeBlock?.id;
+    stRef.current.systems = systems;
+    stRef.current.activeId = activeSystem?.id;
     const canvas = canvasRef.current;
     const w = canvas ? canvas.width : 800, h = canvas ? canvas.height : 500;
+    const allBlocks = systems.flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
     const existing = new Map(stRef.current.nodes.map(n=>[n.id,n]));
-    stRef.current.nodes = blocks.map((b,i) => {
+    stRef.current.nodes = allBlocks.map((b,i) => {
       if (existing.has(b.id)) return existing.get(b.id);
-      const angle = (i/Math.max(blocks.length,1))*Math.PI*2;
-      return { id:b.id, x:w/2+Math.cos(angle)*350, y:h/2+Math.sin(angle)*350, vx:0, vy:0 };
+      const angle = (i/Math.max(allBlocks.length,1))*Math.PI*2;
+      return { id:b.id, systemId:b.systemId, x:w/2+Math.cos(angle)*250, y:h/2+Math.sin(angle)*250, vx:0, vy:0 };
     });
-  }, [blocks, activeBlock && activeBlock.id]);
+    // Rebuild star positions
+    const N = systems.length;
+    const starPositions = [];
+    if (N === 1) {
+      starPositions.push({ x: w/2, y: h/2 });
+    } else {
+      for (let i=0; i<N; i++) {
+        const angle = (i/N)*Math.PI*2 - Math.PI/2;
+        const r = Math.min(w,h)*0.28;
+        starPositions.push({ x: w/2+Math.cos(angle)*r, y: h/2+Math.sin(angle)*r });
+      }
+    }
+    stRef.current.stars = starPositions;
+  }, [systems, activeSystem && activeSystem.id]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current, con = containerRef.current;
@@ -1660,40 +1784,68 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
     const resize = () => {
       canvas.width = con.clientWidth;
       canvas.height = con.clientHeight;
-      if (stRef.current.nodes.length===0 && stRef.current.blocks.length>0) {
-        const w=canvas.width, h=canvas.height;
-        stRef.current.nodes = stRef.current.blocks.map((b,i) => {
-          const angle=(i/Math.max(stRef.current.blocks.length,1))*Math.PI*2;
-          return { id:b.id, x:w/2+Math.cos(angle)*350, y:h/2+Math.sin(angle)*350, vx:0, vy:0 };
+      const w=canvas.width, h=canvas.height;
+      const allBlocks = (stRef.current.systems||[]).flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
+      if (stRef.current.nodes.length===0 && allBlocks.length>0) {
+        stRef.current.nodes = allBlocks.map((b,i) => {
+          const angle=(i/Math.max(allBlocks.length,1))*Math.PI*2;
+          return { id:b.id, systemId:b.systemId, x:w/2+Math.cos(angle)*250, y:h/2+Math.sin(angle)*250, vx:0, vy:0 };
         });
       }
+      // Rebuild star positions on resize
+      const N = (stRef.current.systems||[]).length;
+      const starPositions = [];
+      if (N === 1) {
+        starPositions.push({ x: w/2, y: h/2 });
+      } else {
+        for (let i=0; i<N; i++) {
+          const angle = (i/N)*Math.PI*2 - Math.PI/2;
+          const r = Math.min(w,h)*0.28;
+          starPositions.push({ x: w/2+Math.cos(angle)*r, y: h/2+Math.sin(angle)*r });
+        }
+      }
+      stRef.current.stars = starPositions;
     };
     resize();
     window.addEventListener('resize', resize);
 
     const tick = () => {
       const st=stRef.current;
-      const { nodes, blocks, activeId, orbitAngles } = st;
+      const { nodes, systems, stars, activeId, orbitAngles } = st;
       const w=canvas.width, h=canvas.height;
+
+      // Flatten all blocks with systemId for rendering
+      const allBlocks = (systems||[]).flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
 
       // Physics
       for (let i=0; i<nodes.length; i++) {
         const n=nodes[i];
         if (st.dragging===n.id) { n.vx=0; n.vy=0; continue; }
         let fx=0, fy=0;
-        fx += (w/2-n.x)*0.028; fy += (h/2-n.y)*0.028;
+        // Node repulsion
         for (let j=0; j<nodes.length; j++) {
           if (i===j) continue;
           const dx=n.x-nodes[j].x, dy=n.y-nodes[j].y;
           const d2=Math.max(dx*dx+dy*dy,1), d=Math.sqrt(d2);
-          const rep=stRef.current.repulsion; fx+=dx/d*Math.min(rep/d2,800); fy+=dy/d*Math.min(rep/d2,800);
+          const rep=st.repulsion; fx+=dx/d*Math.min(rep/d2,800); fy+=dy/d*Math.min(rep/d2,800);
         }
-        for (const di of [-1,1]) {
-          const nb=nodes[i+di]; if(!nb) continue;
+        // Spring to neighbour nodes in same system
+        const sameSystemNodes = nodes.filter(nn => nn.systemId === n.systemId && nn.id !== n.id);
+        for (const nb of sameSystemNodes) {
           const dx=nb.x-n.x, dy=nb.y-n.y;
           const d=Math.sqrt(dx*dx+dy*dy)||1;
-          const f=Math.max(-80,Math.min(80,(d-500)*stRef.current.spring));
+          const f=Math.max(-80,Math.min(80,(d-300)*st.spring));
           fx+=dx/d*f; fy+=dy/d*f;
+        }
+        // Star attraction
+        const sysIdx = (systems||[]).findIndex(s => s.id === n.systemId);
+        if (sysIdx >= 0 && stars[sysIdx]) {
+          const star = stars[sysIdx];
+          const dx = star.x - n.x, dy = star.y - n.y;
+          const d = Math.sqrt(dx*dx+dy*dy) || 1;
+          const IDEAL = 220;
+          const f = (d - IDEAL) * 0.08;
+          fx += dx/d*f; fy += dy/d*f;
         }
         n.vx=(n.vx+fx)*0.75; n.vy=(n.vy+fy)*0.75;
         n.x=Math.max(R+ORBT+8,Math.min(w-R-ORBT-8,n.x+n.vx));
@@ -1702,13 +1854,13 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
 
       // Update orbit angles
       for (let i=0; i<nodes.length; i++) {
-        const blk=blocks[i]; if(!blk) continue;
+        const blkData=allBlocks.find(b=>b.id===nodes[i].id); if(!blkData) continue;
         const n=nodes[i];
-        if (!orbitAngles[n.id]) orbitAngles[n.id]=blk.quests.map((_,qi)=>(qi/Math.max(blk.quests.length,1))*Math.PI*2);
+        if (!orbitAngles[n.id]) orbitAngles[n.id]=blkData.quests.map((_,qi)=>(qi/Math.max(blkData.quests.length,1))*Math.PI*2);
         const angles=orbitAngles[n.id];
-        while(angles.length<blk.quests.length) angles.push((angles.length/Math.max(blk.quests.length,1))*Math.PI*2);
-        angles.length=blk.quests.length;
-        for(let qi=0;qi<blk.quests.length;qi++) angles[qi]+=0.007+qi*0.0015;
+        while(angles.length<blkData.quests.length) angles.push((angles.length/Math.max(blkData.quests.length,1))*Math.PI*2);
+        angles.length=blkData.quests.length;
+        for(let qi=0;qi<blkData.quests.length;qi++) angles[qi]+=0.007+qi*0.0015;
       }
 
       ctx.clearRect(0,0,w,h);
@@ -1717,20 +1869,51 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
       ctx.scale(st.zoom, st.zoom);
       ctx.translate(-w/2, -h/2);
 
-      // Edges
-      for (let i=1; i<nodes.length; i++) {
-        const a=nodes[i-1], b=nodes[i], blk=blocks[i-1];
-        const done=blk&&blk.completed, act=blk&&blk.id===activeId;
-        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle=done?'#10b981':act?'#0fa8f5':'#1e3050';
-        ctx.lineWidth=2; ctx.globalAlpha=done?0.7:0.35;
-        ctx.setLineDash(done?[]:[10,7]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
-      }
+      // Draw Stars
+      (systems||[]).forEach((sys, si) => {
+        const star = stars[si]; if (!star) return;
+        const isActiveStar = sys.id === activeId;
+        const starR = 24;
+        ctx.save();
+        ctx.translate(star.x, star.y);
+        // Outer glow
+        const grd = ctx.createRadialGradient(0,0,starR*0.3,0,0,starR*2.5);
+        grd.addColorStop(0, isActiveStar ? 'rgba(255,220,80,0.9)' : 'rgba(255,220,80,0.3)');
+        grd.addColorStop(1, 'rgba(255,220,80,0)');
+        ctx.beginPath(); ctx.arc(0,0,starR*2.5,0,Math.PI*2);
+        ctx.fillStyle=grd; ctx.fill();
+        // Core
+        ctx.beginPath(); ctx.arc(0,0,starR,0,Math.PI*2);
+        ctx.fillStyle = sys.completed ? 'rgba(16,185,129,0.9)' : isActiveStar ? 'rgba(255,200,50,0.95)' : 'rgba(100,80,20,0.5)';
+        ctx.fill();
+        ctx.strokeStyle = sys.completed ? '#10b981' : isActiveStar ? 'rgba(255,220,80,0.9)' : 'rgba(100,80,20,0.6)';
+        ctx.lineWidth = 1.5; ctx.stroke();
+        // Label
+        ctx.font = '700 11px Orbitron,sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(sys.title.toUpperCase().slice(0,12), 0, starR+16);
+        ctx.restore();
+      });
+
+      // Draw lines from star to each of its planet nodes
+      (systems||[]).forEach((sys, si) => {
+        const star = stars[si]; if (!star) return;
+        const sysNodes = nodes.filter(n => n.systemId === sys.id);
+        const isActiveStar = sys.id === activeId;
+        for (const n of sysNodes) {
+          ctx.beginPath(); ctx.moveTo(star.x, star.y); ctx.lineTo(n.x, n.y);
+          ctx.strokeStyle = isActiveStar ? 'rgba(15,168,245,0.15)' : 'rgba(30,50,80,0.3)';
+          ctx.lineWidth = 1; ctx.setLineDash([4,8]); ctx.stroke(); ctx.setLineDash([]);
+        }
+      });
 
       // Orbit rings
       for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i], blk=blocks[i]; if(!blk||blk.quests.length===0) continue;
-        const isAct=blk.id===activeId, isDone=blk.completed;
+        const n=nodes[i];
+        const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData||blkData.quests.length===0) continue;
+        const sys=(systems||[]).find(s=>s.id===n.systemId);
+        const isAct=sys&&sys.id===activeId, isDone=blkData.completed;
         ctx.beginPath(); ctx.arc(n.x,n.y,ORBT,0,Math.PI*2);
         ctx.strokeStyle=isDone?'rgba(16,185,129,0.18)':isAct?'rgba(15,168,245,0.18)':'rgba(255,255,255,0.05)';
         ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.stroke(); ctx.setLineDash([]);
@@ -1738,9 +1921,11 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
 
       // Planets
       for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i], blk=blocks[i]; if(!blk) continue;
-        const isAct=blk.id===activeId, isDone=blk.completed;
-        const total=blk.quests.length, done=blk.quests.filter(q=>q.done).length;
+        const n=nodes[i];
+        const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData) continue;
+        const sys=(systems||[]).find(s=>s.id===n.systemId);
+        const isAct=sys&&sys.id===activeId, isDone=blkData.completed;
+        const total=blkData.quests.length, done=blkData.quests.filter(q=>q.done).length;
         if (isAct) {
           const g=ctx.createRadialGradient(n.x,n.y,R-8,n.x,n.y,R+28);
           g.addColorStop(0,'rgba(15,168,245,0.28)'); g.addColorStop(1,'rgba(15,168,245,0)');
@@ -1768,7 +1953,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
         ctx.fillText(isDone?'V':isAct?'>':'x', n.x, n.y-12);
         ctx.font='bold 12px Rajdhani,sans-serif';
         ctx.fillStyle=isDone?'#10b981':isAct?'#e2e8f0':'#5a6478';
-        const t=blk.title.length>13?blk.title.slice(0,13)+'...':blk.title;
+        const t=blkData.title.length>13?blkData.title.slice(0,13)+'...':blkData.title;
         ctx.fillText(t, n.x, n.y+4);
         if (total>0) {
           ctx.font='bold 9px Orbitron,sans-serif';
@@ -1779,11 +1964,13 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
 
       // Satellites
       for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i], blk=blocks[i]; if(!blk||blk.quests.length===0) continue;
-        const isAct=blk.id===activeId, isDone=blk.completed;
+        const n=nodes[i];
+        const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData||blkData.quests.length===0) continue;
+        const sys=(systems||[]).find(s=>s.id===n.systemId);
+        const isAct=sys&&sys.id===activeId, isDone=blkData.completed;
         const angles=orbitAngles[n.id]||[];
-        for (let qi=0; qi<blk.quests.length; qi++) {
-          const q=blk.quests[qi], angle=angles[qi]||0;
+        for (let qi=0; qi<blkData.quests.length; qi++) {
+          const q=blkData.quests[qi], angle=angles[qi]||0;
           const qx=n.x+Math.cos(angle)*ORBT;
           const qy=n.y+Math.sin(angle)*ORBT;
           const qDone=q.done;
@@ -1825,16 +2012,19 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
     return { x:(mx-w/2)/z+w/2, y:(my-h/2)/z+h/2 };
   };
   const getSatellite = (mx, my) => {
-    const { nodes, blocks, orbitAngles } = stRef.current;
+    const { nodes, systems, orbitAngles } = stRef.current;
     const ORBT=160, QR=15;
+    const allBlocks = (systems||[]).flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
     for (let i=0; i<nodes.length; i++) {
-      const n=nodes[i], blk=blocks[i]; if(!blk) continue;
+      const n=nodes[i];
+      const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData) continue;
+      const sys=(systems||[]).find(s=>s.id===n.systemId);
       const angles=orbitAngles[n.id]||[];
-      for (let qi=0; qi<blk.quests.length; qi++) {
+      for (let qi=0; qi<blkData.quests.length; qi++) {
         const angle=angles[qi]||0;
         const qx=n.x+Math.cos(angle)*ORBT, qy=n.y+Math.sin(angle)*ORBT;
         const dx=qx-mx, dy=qy-my;
-        if (Math.sqrt(dx*dx+dy*dy)<QR) return { quest:blk.quests[qi], blockId:blk.id, isActive:blk.id===stRef.current.activeId };
+        if (Math.sqrt(dx*dx+dy*dy)<QR) return { quest:blkData.quests[qi], systemId:n.systemId, blockId:blkData.id, isActive:sys&&sys.id===stRef.current.activeId };
       }
     }
     return null;
@@ -1880,29 +2070,31 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
     const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);
     if(moved<10){
       if(start.id){
-        const blk=stRef.current.blocks.find(b=>b.id===start.id);
+        const allBlocks = (stRef.current.systems||[]).flatMap(s=>s.blocks);
+        const blk=allBlocks.find(b=>b.id===start.id);
         if(blk){ setSelBlock(blk.id); setTab('blocks'); return; }
       }
-      if(start.sat){ onQuestClick(start.sat.quest, start.sat.blockId, start.sat.isActive); }
+      if(start.sat){ onQuestClick(start.sat.quest, start.sat.systemId, start.sat.blockId, start.sat.isActive); }
     }
   };
 
+  const allBlocks = systems.flatMap(s=>s.blocks);
   return (
     <div ref={containerRef} style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',padding:'24px',gap:'16px'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
         <div>
           <div style={{fontFamily:'var(--hud)',fontSize:'18px',fontWeight:800,letterSpacing:'2px'}}>ГРАФ ПРОГРЕССА</div>
           <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'4px',fontWeight:600}}>
-            {blocks.filter(b=>b.completed).length}/{blocks.length} завершено
+            {allBlocks.filter(b=>b.completed).length}/{allBlocks.length} планет завершено · {systems.filter(s=>s.completed).length}/{systems.length} систем
           </div>
         </div>
-        <button className="btn btn-pur" onClick={()=>setTab('blocks')}>◈ Блоки</button>
+        <button className="btn btn-pur" onClick={()=>setTab('blocks')}>✦ Системы</button>
       </div>
-      {blocks.length===0 ? (
+      {systems.length===0 ? (
         <div className="empty" style={{flex:1}}>
           <div className="empty-ic">&#x2B21;</div>
-          <div className="empty-txt">Нет блоков</div>
-          <button className="btn btn-pur" onClick={onAddBlock}>Создать первый</button>
+          <div className="empty-txt">Нет систем</div>
+          <button className="btn btn-pur" onClick={onAddSystem}>Создать первую</button>
         </div>
       ) : (
         <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none'}}
