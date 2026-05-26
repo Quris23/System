@@ -482,6 +482,12 @@ body::after{
   /* Toasts — move to bottom */
   #toasts{top:auto;bottom:16px;right:10px;left:10px;align-items:stretch}
   .toast{text-align:center}
+
+  /* Graph */
+  .graph-wrap{padding:10px 10px 6px!important;gap:8px!important}
+  .graph-title{font-size:14px!important;letter-spacing:1px!important}
+  .graph-sub{display:none}
+  .graph-sys-btn{padding:6px 12px!important;font-size:10px!important}
 }
 
 @media (max-width:380px){
@@ -1908,6 +1914,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     satAngles:{}, satSpeeds:{}, satPos:{},
   });
   const dragStart = React.useRef(null);
+  const pinchRef  = React.useRef(null);
 
   React.useEffect(() => {
     stRef.current.systems = systems;
@@ -2243,17 +2250,85 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     }
   };
 
+  // ── Touch handlers ──
+  const onTS=e=>{
+    e.preventDefault();
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      onMD({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}});
+      // Glow on touch
+      const canvas=canvasRef.current; if(!canvas) return;
+      const rect=canvas.getBoundingClientRect();
+      const{x:mx,y:my}=toWorld(t.clientX-rect.left,t.clientY-rect.top);
+      const hovStar=getStar(mx,my);
+      stRef.current.hoveredStarId=hovStar?hovStar.id:null;
+    } else if(e.touches.length>=2){
+      // Cancel any single-finger drag
+      dragStart.current=null; stRef.current.draggingStarIdx=-1;
+      stRef.current.hoveredStarId=null;
+      const t1=e.touches[0],t2=e.touches[1];
+      pinchRef.current={
+        dist:Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY),
+        midX:(t1.clientX+t2.clientX)/2, midY:(t1.clientY+t2.clientY)/2,
+      };
+    }
+  };
+  const onTM=e=>{
+    e.preventDefault();
+    if(e.touches.length>=2){
+      const t1=e.touches[0],t2=e.touches[1];
+      const dist=Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);
+      const midX=(t1.clientX+t2.clientX)/2, midY=(t1.clientY+t2.clientY)/2;
+      const canvas=canvasRef.current; if(!canvas||!pinchRef.current) return;
+      const rect=canvas.getBoundingClientRect();
+      const w=stRef.current.cssW||canvas.width, h=stRef.current.cssH||canvas.height;
+      const p=pinchRef.current;
+      // Incremental zoom toward pinch midpoint
+      const oldZoom=stRef.current.zoom;
+      const newZoom=Math.max(0.2,Math.min(5,oldZoom*(dist/p.dist)));
+      const ratio=newZoom/oldZoom;
+      const cmx=midX-rect.left, cmy=midY-rect.top;
+      stRef.current.panX=(cmx-w/2)*(1-ratio)+stRef.current.panX*ratio;
+      stRef.current.panY=(cmy-h/2)*(1-ratio)+stRef.current.panY*ratio;
+      stRef.current.zoom=newZoom;
+      // Pan from midpoint shift
+      stRef.current.panX+=midX-p.midX;
+      stRef.current.panY+=midY-p.midY;
+      pinchRef.current={dist,midX,midY};
+    } else if(e.touches.length===1&&!pinchRef.current){
+      const t=e.touches[0];
+      onMM({clientX:t.clientX,clientY:t.clientY});
+    }
+  };
+  const onTE=e=>{
+    e.preventDefault();
+    if(e.touches.length===0){
+      if(pinchRef.current){
+        pinchRef.current=null; dragStart.current=null;
+      } else {
+        stRef.current.hoveredStarId=null;
+        const t=e.changedTouches[0];
+        onMU({clientX:t.clientX,clientY:t.clientY});
+      }
+    } else if(e.touches.length===1){
+      // Dropped from 2 → 1 finger: switch to pan
+      pinchRef.current=null;
+      const t=e.touches[0];
+      dragStart.current={x:t.clientX,y:t.clientY,isPan:true};
+    }
+  };
+
   const allBlocks = systems.flatMap(s=>s.blocks);
   return (
-    <div ref={containerRef} style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',padding:'24px',gap:'16px'}}>
+    <div ref={containerRef} className="graph-wrap" style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',padding:'24px',gap:'16px'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
         <div>
-          <div style={{fontFamily:'var(--hud)',fontSize:'18px',fontWeight:800,letterSpacing:'2px'}}>ГРАФ ПРОГРЕССА</div>
-          <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'4px',fontWeight:600}}>
+          <div className="graph-title" style={{fontFamily:'var(--hud)',fontSize:'18px',fontWeight:800,letterSpacing:'2px'}}>ГРАФ ПРОГРЕССА</div>
+          <div className="graph-sub" style={{fontSize:'12px',color:'var(--mut2)',marginTop:'4px',fontWeight:600}}>
             {allBlocks.filter(b=>b.completed).length}/{allBlocks.length} планет завершено · {systems.filter(s=>s.completed).length}/{systems.length} систем
           </div>
         </div>
-        <button className="btn btn-pur" onClick={()=>setTab('blocks')}>✦ Системы</button>
+        <button className="btn btn-pur graph-sys-btn" onClick={()=>setTab('blocks')}>✦ Системы</button>
       </div>
       {systems.length===0 ? (
         <div className="empty" style={{flex:1}}>
@@ -2265,9 +2340,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
         <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none',cursor:'grab'}}
           onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
           onMouseLeave={()=>{ dragStart.current=null; stRef.current.draggingStarIdx=-1; stRef.current.hoveredStarId=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
-          onTouchStart={e=>{ e.preventDefault(); const t=e.touches[0]; onMD({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}}); }}
-          onTouchMove={e=>{ e.preventDefault(); const t=e.touches[0]; onMM({clientX:t.clientX,clientY:t.clientY}); }}
-          onTouchEnd={e=>{ e.preventDefault(); const t=e.changedTouches[0]; onMU({clientX:t.clientX,clientY:t.clientY}); }}
+          onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE} onTouchCancel={onTE}
         />
       )}
     </div>
