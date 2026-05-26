@@ -1891,7 +1891,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
   const containerRef = React.useRef(null);
   const stRef = React.useRef({
     systems:[], activeId:null, animId:null, zoom:1, panX:0, panY:0,
-    stars:[], starVels:[], hoveredStarId:null,
+    stars:[], starVels:[], hoveredStarId:null, draggingStarIdx:-1,
     planetAngles:{}, planetOrbits:{}, planetPos:{},
     satAngles:{}, satSpeeds:{}, satPos:{},
   });
@@ -1930,19 +1930,26 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       if(stars.length!==(systems||[]).length) buildStars();
       const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
 
-      // ── Star physics: free repulsion + weak center pull ──
+      // ── Star physics: FDG — repulsion + spring attraction + weak center ──
+      const IDEAL=260, SPRING_K=0.004, REP_K=70000, DAMP=0.85;
+      const dragIdx=st.draggingStarIdx;
       for(let i=0;i<stars.length;i++){
+        if(i===dragIdx) continue; // pinned to mouse
         if(!starVels[i]) starVels[i]={vx:0,vy:0};
         let fx=0,fy=0;
         for(let j=0;j<stars.length;j++){
           if(i===j) continue;
           const dx=stars[i].x-stars[j].x,dy=stars[i].y-stars[j].y;
           const d=Math.sqrt(dx*dx+dy*dy)||1;
-          fx+=dx/d*Math.min(60000/(d*d),300); fy+=dy/d*Math.min(60000/(d*d),300);
+          // repulsion (always pushes away)
+          const rep=Math.min(REP_K/(d*d),350);
+          fx+=dx/d*rep; fy+=dy/d*rep;
+          // spring: pulls toward ideal distance (only when farther than IDEAL)
+          if(d>IDEAL){const spring=(d-IDEAL)*SPRING_K; fx-=dx/d*spring; fy-=dy/d*spring;}
         }
-        // Very weak pull toward canvas center so stars don't drift off-screen
-        fx+=(w/2-stars[i].x)*0.0015; fy+=(h/2-stars[i].y)*0.0015;
-        starVels[i].vx=(starVels[i].vx+fx)*0.87; starVels[i].vy=(starVels[i].vy+fy)*0.87;
+        // Weak center gravity so stars don't drift off-screen
+        fx+=(w/2-stars[i].x)*0.001; fy+=(h/2-stars[i].y)*0.001;
+        starVels[i].vx=(starVels[i].vx+fx)*DAMP; starVels[i].vy=(starVels[i].vy+fy)*DAMP;
         stars[i]={x:stars[i].x+starVels[i].vx, y:stars[i].y+starVels[i].vy};
       }
 
@@ -2111,28 +2118,46 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
   const getPlanet=(mx,my)=>{for(const[blockId,pp]of Object.entries(stRef.current.planetPos||{})){const dx=pp.x-mx,dy=pp.y-my;if(Math.sqrt(dx*dx+dy*dy)<pp.r+10)return{blockId,...pp};}return null;};
   const getSatellite=(mx,my)=>{for(const sats of Object.values(stRef.current.satPos||{})){for(const sat of sats){const dx=sat.x-mx,dy=sat.y-my;if(Math.sqrt(dx*dx+dy*dy)<sat.r+6)return sat;}}return null;};
   const getStar=(mx,my)=>{const{stars,systems:sl}=stRef.current;if(!stars||!sl)return null;for(let i=0;i<sl.length;i++){const s=stars[i];if(!s)continue;const sr=20+Math.min((sl[i].reward||0),400)/15;const dx=s.x-mx,dy=s.y-my;if(Math.sqrt(dx*dx+dy*dy)<sr+12)return sl[i];}return null;};
+  const getStarIdx=(mx,my)=>{const{stars,systems:sl}=stRef.current;if(!stars||!sl)return -1;for(let i=0;i<sl.length;i++){const s=stars[i];if(!s)continue;const sr=20+Math.min((sl[i].reward||0),400)/15;const dx=s.x-mx,dy=s.y-my;if(Math.sqrt(dx*dx+dy*dy)<sr+12)return i;}return -1;};
   const onMD=e=>{
     const canvas=canvasRef.current;if(!canvas)return;
     const rect=canvas.getBoundingClientRect();
     const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);
     const sat=getSatellite(mx,my);
     const planet=!sat?getPlanet(mx,my):null;
-    const star=!sat&&!planet?getStar(mx,my):null;
-    const isPan=!sat&&!planet&&!star;
-    dragStart.current={x:e.clientX,y:e.clientY,sat,planet,star,isPan};
-    if(isPan) canvas.style.cursor='grabbing';
+    const starIdx=(!sat&&!planet)?getStarIdx(mx,my):-1;
+    const star=(starIdx>=0)?(stRef.current.systems||[])[starIdx]:null;
+    const isPan=!sat&&!planet&&starIdx<0;
+    dragStart.current={x:e.clientX,y:e.clientY,sat,planet,star,starIdx,isPan};
+    if(starIdx>=0){
+      stRef.current.draggingStarIdx=starIdx;
+      if(stRef.current.starVels[starIdx]) stRef.current.starVels[starIdx]={vx:0,vy:0};
+      canvas.style.cursor='grabbing';
+    } else if(isPan){
+      canvas.style.cursor='grabbing';
+    }
     e.preventDefault();
   };
   const onMM=e=>{
     const canvas=canvasRef.current;if(!canvas)return;
     const rect=canvas.getBoundingClientRect();
+    const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);
+    // Drag star
+    const dIdx=stRef.current.draggingStarIdx;
+    if(dIdx>=0){
+      stRef.current.stars[dIdx]={x:mx,y:my};
+      if(stRef.current.starVels[dIdx]) stRef.current.starVels[dIdx]={vx:0,vy:0};
+      canvas.style.cursor='grabbing';
+      return;
+    }
+    // Pan
     if(dragStart.current?.isPan){
       const dx=e.clientX-dragStart.current.x, dy=e.clientY-dragStart.current.y;
       stRef.current.panX+=dx; stRef.current.panY+=dy;
       dragStart.current.x=e.clientX; dragStart.current.y=e.clientY;
       return;
     }
-    const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);
+    // Hover highlights
     const hovP=getPlanet(mx,my);const hovS=!hovP&&getSatellite(mx,my);const hovStar=!hovP&&!hovS&&getStar(mx,my);
     stRef.current.hoveredStarId=hovStar?hovStar.id:null;
     canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'grab';
@@ -2140,7 +2165,16 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
   const onMU=e=>{
     const canvas=canvasRef.current;
     const start=dragStart.current;dragStart.current=null;
+    const dIdx=stRef.current.draggingStarIdx;
+    stRef.current.draggingStarIdx=-1;
     if(!start)return;
+    if(dIdx>=0){
+      // Release star — let physics take over again
+      if(canvas) canvas.style.cursor='grab';
+      const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);
+      if(moved<8 && start.star){setSelSystem(start.star.id);setTab('blocks');}
+      return;
+    }
     if(start.isPan){if(canvas)canvas.style.cursor='grab';return;}
     const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);
     if(moved<10){
@@ -2171,7 +2205,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       ) : (
         <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none',cursor:'grab'}}
           onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
-          onMouseLeave={()=>{ dragStart.current=null; stRef.current.hoveredStarId=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
+          onMouseLeave={()=>{ dragStart.current=null; stRef.current.draggingStarIdx=-1; stRef.current.hoveredStarId=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
           onTouchStart={e=>{ e.preventDefault(); const t=e.touches[0]; onMD({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}}); }}
           onTouchMove={e=>{ e.preventDefault(); const t=e.touches[0]; onMM({clientX:t.clientX,clientY:t.clientY}); }}
           onTouchEnd={e=>{ e.preventDefault(); const t=e.changedTouches[0]; onMU({clientX:t.clientX,clientY:t.clientY}); }}
