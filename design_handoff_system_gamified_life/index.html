@@ -473,8 +473,10 @@ function App({ session }) {
   const [selBlock, setSelBlock] = useState(null);
 
   useEffect(() => {
+    console.log('[SYS] session.user.id:', session?.user?.id);
     sb.from('user_state').select('state').eq('user_id', session.user.id).single()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        console.log('[SYS] load data:', data, 'error:', error);
         if (data?.state) {
           const s = data.state;
           setSt({ ...DEF, ...s });
@@ -488,7 +490,8 @@ function App({ session }) {
   useEffect(() => {
     if (!loaded) return;
     const t = setTimeout(() => {
-      sb.from('user_state').upsert({ user_id: session.user.id, state: st, updated_at: new Date().toISOString() });
+      sb.from('user_state').upsert({ user_id: session.user.id, state: st, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error('[SYS] save error:', error); else console.log('[SYS] saved ok'); });
     }, 600);
     return () => clearTimeout(t);
   }, [st, loaded]);
