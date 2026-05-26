@@ -741,16 +741,14 @@ function App({ session }) {
       if (!blk || blk.completed) return p;
       const q = blk.quests.find(q=>q.id===questId);
       if (!q || q.done) return p;
-      const rew = q.reward || 25;
-      setTimeout(() => toast(`+${rew} ✦  Задание выполнено!`), 0);
-      const newBlocks = p.blocks.map(b => {
-        if (b.id !== blockId) return b;
-        const nq = b.quests.map(q2 => q2.id===questId ? {...q2,done:true} : q2);
-        const allDone = nq.every(q2=>q2.done);
-        if (allDone) setTimeout(() => toast(`🏆  Блок «${b.title}» пройден!`, 'lvl'), 600);
-        return {...b, quests:nq, completed:allDone};
-      });
-      return {...p, player:earn(p, rew), blocks:newBlocks};
+      const questRew = q.reward || 25;
+      const newQuests = blk.quests.map(q2 => q2.id===questId ? {...q2,done:true} : q2);
+      const allDone = newQuests.every(q2=>q2.done);
+      const blockRew = allDone ? (blk.reward || 0) : 0;
+      setTimeout(() => toast(`+${questRew} ✦  Задание выполнено!`), 0);
+      if (allDone) setTimeout(() => toast(`🏆  Блок «${blk.title}» пройден!${blockRew>0?' +'+blockRew+' ✦':''}`, 'lvl'), 600);
+      const newBlocks = p.blocks.map(b => b.id!==blockId ? b : {...b, quests:newQuests, completed:allDone});
+      return {...p, player:earn(p, questRew + blockRew), blocks:newBlocks};
     });
   }, [toast]);
 
@@ -785,9 +783,13 @@ function App({ session }) {
     if (!modal) return;
     const { type } = modal;
     if (type === 'addBlock') {
-      const nb = { id:uid(), title:data.title, description:data.description||'', completed:false, quests:[] };
+      const nb = { id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||0, completed:false, quests:[] };
       setSt(p => ({ ...p, blocks:[...p.blocks, nb] }));
       setSelBlock(nb.id);
+    } else if (type === 'editBlock') {
+      setSt(p => ({...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
+        ...b, title:data.title||b.title, description:data.description||'', reward:parseInt(data.reward)||0,
+      })}));
     } else if (type === 'addQuest') {
       setSt(p => ({ ...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
         ...b, quests:[...b.quests, {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||25, done:false}]
@@ -900,6 +902,7 @@ function App({ session }) {
             onAddBlock={()=>setModal({type:'addBlock'})}
             onAddQuest={bid=>setModal({type:'addQuest', blockId:bid})}
             onDelBlock={delBlock}
+            onEditBlock={b=>setModal({type:'editBlock', blockId:b.id, data:{title:b.title, description:b.description, reward:String(b.reward||0)}})}
             onQuestClick={(quest,blockId,isActive)=>setQuestDetail({quest,blockId,isActive})}
           />
         )}
@@ -939,7 +942,7 @@ function App({ session }) {
 }
 
 // ── BLOCKS VIEW ──
-function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, onAddQuest, onDelBlock, onQuestClick }) {
+function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, onAddQuest, onDelBlock, onQuestClick, onEditBlock }) {
   const selData = blocks.find(b=>b.id===selBlock);
   const activeId = activeBlock?.id;
 
@@ -1003,6 +1006,7 @@ function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, on
             isActive={selData.id === activeId}
             onAddQuest={()=>onAddQuest(selData.id)}
             onQuestClick={(q)=>onQuestClick(q, selData.id, selData.id===activeId)}
+            onEditBlock={()=>onEditBlock(selData)}
           />
         )}
       </div>
@@ -1010,7 +1014,7 @@ function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, on
   );
 }
 
-function BlockDetail({ block, isActive, onAddQuest, onQuestClick }) {
+function BlockDetail({ block, isActive, onAddQuest, onQuestClick, onEditBlock }) {
   const isLocked = !block.completed && !isActive;
   const statusCls = block.completed ? 'st-done' : isActive ? 'st-active' : 'st-locked';
   const statusTxt = block.completed ? 'COMPLETED' : isActive ? 'ACTIVE' : 'LOCKED';
@@ -1018,12 +1022,18 @@ function BlockDetail({ block, isActive, onAddQuest, onQuestClick }) {
   return (
     <>
       <div className="bdet-hdr">
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <div className="bdet-title">{block.title}</div>
           {block.description && <div className="bdet-desc">{block.description}</div>}
+          {(block.reward||0) > 0 && (
+            <div style={{display:'inline-flex',alignItems:'center',gap:'5px',marginTop:'8px',fontFamily:'var(--hud)',fontSize:'11px',color:'var(--gld)',background:'var(--gld2)',border:'1px solid rgba(148,234,255,.25)',borderRadius:'4px',padding:'3px 10px',letterSpacing:'1px'}}>
+              🏆 +{block.reward} ✦ за блок
+            </div>
+          )}
         </div>
         <div className="bdet-actions">
           <span className={`status-tag ${statusCls}`}>{statusTxt}</span>
+          <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'11px'}} onClick={onEditBlock}>✎ ИЗМЕНИТЬ</button>
         </div>
       </div>
 
@@ -1272,8 +1282,17 @@ const FORMS = {
   addBlock: {
     title:'Новый Блок',
     fields:[
-      {k:'title',    label:'Название',   type:'text', req:true},
-      {k:'description', label:'Описание', type:'textarea'},
+      {k:'title',       label:'Название',          type:'text', req:true},
+      {k:'description', label:'Описание',           type:'textarea'},
+      {k:'reward',      label:'Награда за блок (✦)', type:'number', ph:'0'},
+    ]
+  },
+  editBlock: {
+    title:'Изменить Блок',
+    fields:[
+      {k:'title',       label:'Название',          type:'text', req:true},
+      {k:'description', label:'Описание',           type:'textarea'},
+      {k:'reward',      label:'Награда за блок (✦)', type:'number', ph:'0'},
     ]
   },
   addQuest: {
