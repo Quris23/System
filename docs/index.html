@@ -2156,7 +2156,19 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     };
     stRef.current.animId=requestAnimationFrame(tick);
 
-    const onWheel=e=>{e.preventDefault();const f=e.deltaY>0?0.9:1.1;stRef.current.zoom=Math.max(0.2,Math.min(5,stRef.current.zoom*f));};
+    const onWheel=e=>{
+      e.preventDefault();
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      const w=stRef.current.cssW||canvas.width, h=stRef.current.cssH||canvas.height;
+      const oldZoom=stRef.current.zoom;
+      const newZoom=Math.max(0.2,Math.min(5,oldZoom*(e.deltaY>0?0.9:1.1)));
+      const ratio=newZoom/oldZoom;
+      // Keep world point under cursor fixed: newPan = cursor*(1-ratio) + oldPan*ratio
+      stRef.current.panX=(mx-w/2)*(1-ratio)+stRef.current.panX*ratio;
+      stRef.current.panY=(my-h/2)*(1-ratio)+stRef.current.panY*ratio;
+      stRef.current.zoom=newZoom;
+    };
     canvas.addEventListener('wheel',onWheel,{passive:false});
     return()=>{cancelAnimationFrame(stRef.current.animId);window.removeEventListener('resize',resize);canvas.removeEventListener('wheel',onWheel);};
   },[]);
