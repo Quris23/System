@@ -1891,7 +1891,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
   const containerRef = React.useRef(null);
   const stRef = React.useRef({
     systems:[], activeId:null, animId:null, zoom:1, panX:0, panY:0,
-    stars:[], starVels:[],
+    stars:[], starVels:[], hoveredStarId:null,
     planetAngles:{}, planetOrbits:{}, planetPos:{},
     satAngles:{}, satSpeeds:{}, satPos:{},
   });
@@ -1993,9 +1993,18 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       // ── Star–star dashed lines ──
       for(let i=0;i<stars.length;i++){
         for(let j=i+1;j<stars.length;j++){
+          const si=(systems||[])[i], sj=(systems||[])[j];
+          const lit=st.hoveredStarId&&(si?.id===st.hoveredStarId||sj?.id===st.hoveredStarId);
           ctx.beginPath(); ctx.moveTo(stars[i].x,stars[i].y); ctx.lineTo(stars[j].x,stars[j].y);
-          ctx.strokeStyle='rgba(255,255,255,0.055)';
-          ctx.lineWidth=1; ctx.setLineDash([5,12]); ctx.stroke(); ctx.setLineDash([]);
+          if(lit){
+            // Glowing highlighted connection
+            ctx.shadowColor='rgba(255,255,255,0.6)'; ctx.shadowBlur=6;
+            ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+          } else {
+            ctx.shadowBlur=0;
+            ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.setLineDash([5,12]);
+          }
+          ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur=0;
         }
       }
 
@@ -2125,6 +2134,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     }
     const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);
     const hovP=getPlanet(mx,my);const hovS=!hovP&&getSatellite(mx,my);const hovStar=!hovP&&!hovS&&getStar(mx,my);
+    stRef.current.hoveredStarId=hovStar?hovStar.id:null;
     canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'grab';
   };
   const onMU=e=>{
@@ -2161,7 +2171,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       ) : (
         <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none',cursor:'grab'}}
           onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
-          onMouseLeave={()=>{ dragStart.current=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
+          onMouseLeave={()=>{ dragStart.current=null; stRef.current.hoveredStarId=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
           onTouchStart={e=>{ e.preventDefault(); const t=e.touches[0]; onMD({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}}); }}
           onTouchMove={e=>{ e.preventDefault(); const t=e.touches[0]; onMM({clientX:t.clientX,clientY:t.clientY}); }}
           onTouchEnd={e=>{ e.preventDefault(); const t=e.changedTouches[0]; onMU({clientX:t.clientX,clientY:t.clientY}); }}
