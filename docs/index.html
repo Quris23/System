@@ -1913,8 +1913,9 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     planetAngles:{}, planetOrbits:{}, planetPos:{},
     satAngles:{}, satSpeeds:{}, satPos:{},
   });
-  const dragStart = React.useRef(null);
-  const pinchRef  = React.useRef(null);
+  const dragStart  = React.useRef(null);
+  const pinchRef   = React.useRef(null);
+  const touchCbRef = React.useRef({});
 
   React.useEffect(() => {
     stRef.current.systems = systems;
@@ -2163,6 +2164,15 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     };
     stRef.current.animId=requestAnimationFrame(tick);
 
+    // Touch events must be passive:false for preventDefault to work on iOS
+    const ts=e=>touchCbRef.current.onTS?.(e);
+    const tm=e=>touchCbRef.current.onTM?.(e);
+    const te=e=>touchCbRef.current.onTE?.(e);
+    canvas.addEventListener('touchstart',ts,{passive:false});
+    canvas.addEventListener('touchmove', tm,{passive:false});
+    canvas.addEventListener('touchend',  te,{passive:false});
+    canvas.addEventListener('touchcancel',te,{passive:false});
+
     const onWheel=e=>{
       e.preventDefault();
       const rect=canvas.getBoundingClientRect();
@@ -2177,7 +2187,15 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       stRef.current.zoom=newZoom;
     };
     canvas.addEventListener('wheel',onWheel,{passive:false});
-    return()=>{cancelAnimationFrame(stRef.current.animId);window.removeEventListener('resize',resize);canvas.removeEventListener('wheel',onWheel);};
+    return()=>{
+      cancelAnimationFrame(stRef.current.animId);
+      window.removeEventListener('resize',resize);
+      canvas.removeEventListener('wheel',onWheel);
+      canvas.removeEventListener('touchstart',ts);
+      canvas.removeEventListener('touchmove',tm);
+      canvas.removeEventListener('touchend',te);
+      canvas.removeEventListener('touchcancel',te);
+    };
   },[]);
 
   const toWorld=(mx,my)=>{const canvas=canvasRef.current;if(!canvas)return{x:mx,y:my};const w=stRef.current.cssW||canvas.width,h=stRef.current.cssH||canvas.height,z=stRef.current.zoom,px=stRef.current.panX,py=stRef.current.panY;return{x:(mx-w/2-px)/z+w/2,y:(my-h/2-py)/z+h/2};};
@@ -2318,6 +2336,9 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     }
   };
 
+  // Keep touchCbRef current so addEventListener callbacks always call latest handlers
+  touchCbRef.current = {onTS, onTM, onTE};
+
   const allBlocks = systems.flatMap(s=>s.blocks);
   return (
     <div ref={containerRef} className="graph-wrap" style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',padding:'24px',gap:'16px'}}>
@@ -2340,7 +2361,6 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
         <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none',cursor:'grab'}}
           onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
           onMouseLeave={()=>{ dragStart.current=null; stRef.current.draggingStarIdx=-1; stRef.current.hoveredStarId=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
-          onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE} onTouchCancel={onTE}
         />
       )}
     </div>
