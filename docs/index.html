@@ -1890,8 +1890,8 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
   const canvasRef = React.useRef(null);
   const containerRef = React.useRef(null);
   const stRef = React.useRef({
-    systems:[], activeId:null, animId:null, zoom:1,
-    stars:[], starVels:[], starHomes:[],
+    systems:[], activeId:null, animId:null, zoom:1, panX:0, panY:0,
+    stars:[], starVels:[],
     planetAngles:{}, planetOrbits:{}, planetPos:{},
     satAngles:{}, satSpeeds:{}, satPos:{},
   });
@@ -1910,13 +1910,12 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     const buildStars = () => {
       const w=canvas.width, h=canvas.height;
       const N=(stRef.current.systems||[]).length;
-      const homes=[];
-      if(N===1){homes.push({x:w/2,y:h/2});}
-      else{for(let i=0;i<N;i++){const a=(i/N)*Math.PI*2-Math.PI/2,r=Math.min(w,h)*0.30;homes.push({x:w/2+Math.cos(a)*r,y:h/2+Math.sin(a)*r});}}
-      stRef.current.starHomes=homes;
       if(stRef.current.stars.length!==N){
-        stRef.current.stars=homes.map(h=>({...h}));
-        stRef.current.starVels=homes.map(()=>({vx:0,vy:0}));
+        const init=[];
+        if(N===1){init.push({x:w/2,y:h/2});}
+        else{for(let i=0;i<N;i++){const a=(i/N)*Math.PI*2-Math.PI/2,r=Math.min(w,h)*0.28;init.push({x:w/2+Math.cos(a)*r,y:h/2+Math.sin(a)*r});}}
+        stRef.current.stars=init;
+        stRef.current.starVels=init.map(()=>({vx:0,vy:0}));
       }
     };
 
@@ -1926,12 +1925,12 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
 
     const tick = () => {
       const st=stRef.current;
-      const{systems,activeId,stars,starVels,starHomes,planetAngles,planetOrbits,satAngles,satSpeeds}=st;
+      const{systems,activeId,stars,starVels,planetAngles,planetOrbits,satAngles,satSpeeds}=st;
       const w=canvas.width,h=canvas.height;
       if(stars.length!==(systems||[]).length) buildStars();
       const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
 
-      // ── Star physics (repulsion + spring to home) ──
+      // ── Star physics: free repulsion + weak center pull ──
       for(let i=0;i<stars.length;i++){
         if(!starVels[i]) starVels[i]={vx:0,vy:0};
         let fx=0,fy=0;
@@ -1939,11 +1938,11 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
           if(i===j) continue;
           const dx=stars[i].x-stars[j].x,dy=stars[i].y-stars[j].y;
           const d=Math.sqrt(dx*dx+dy*dy)||1;
-          const f=Math.min(55000/(d*d),280);
-          fx+=dx/d*f; fy+=dy/d*f;
+          fx+=dx/d*Math.min(60000/(d*d),300); fy+=dy/d*Math.min(60000/(d*d),300);
         }
-        if(starHomes[i]){fx+=(starHomes[i].x-stars[i].x)*0.012;fy+=(starHomes[i].y-stars[i].y)*0.012;}
-        starVels[i].vx=(starVels[i].vx+fx)*0.85; starVels[i].vy=(starVels[i].vy+fy)*0.85;
+        // Very weak pull toward canvas center so stars don't drift off-screen
+        fx+=(w/2-stars[i].x)*0.0015; fy+=(h/2-stars[i].y)*0.0015;
+        starVels[i].vx=(starVels[i].vx+fx)*0.87; starVels[i].vy=(starVels[i].vy+fy)*0.87;
         stars[i]={x:stars[i].x+starVels[i].vx, y:stars[i].y+starVels[i].vy};
       }
 
@@ -1989,7 +1988,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       // ── Draw ──
       ctx.clearRect(0,0,w,h);
       ctx.save();
-      ctx.translate(w/2,h/2); ctx.scale(st.zoom,st.zoom); ctx.translate(-w/2,-h/2);
+      ctx.translate(w/2+st.panX,h/2+st.panY); ctx.scale(st.zoom,st.zoom); ctx.translate(-w/2,-h/2);
 
       // ── Star–star dashed lines ──
       for(let i=0;i<stars.length;i++){
@@ -2099,13 +2098,47 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     return()=>{cancelAnimationFrame(stRef.current.animId);window.removeEventListener('resize',resize);canvas.removeEventListener('wheel',onWheel);};
   },[]);
 
-  const toWorld=(mx,my)=>{const canvas=canvasRef.current;if(!canvas)return{x:mx,y:my};const w=canvas.width,h=canvas.height,z=stRef.current.zoom;return{x:(mx-w/2)/z+w/2,y:(my-h/2)/z+h/2};};
+  const toWorld=(mx,my)=>{const canvas=canvasRef.current;if(!canvas)return{x:mx,y:my};const w=canvas.width,h=canvas.height,z=stRef.current.zoom,px=stRef.current.panX,py=stRef.current.panY;return{x:(mx-w/2-px)/z+w/2,y:(my-h/2-py)/z+h/2};};
   const getPlanet=(mx,my)=>{for(const[blockId,pp]of Object.entries(stRef.current.planetPos||{})){const dx=pp.x-mx,dy=pp.y-my;if(Math.sqrt(dx*dx+dy*dy)<pp.r+10)return{blockId,...pp};}return null;};
   const getSatellite=(mx,my)=>{for(const sats of Object.values(stRef.current.satPos||{})){for(const sat of sats){const dx=sat.x-mx,dy=sat.y-my;if(Math.sqrt(dx*dx+dy*dy)<sat.r+6)return sat;}}return null;};
   const getStar=(mx,my)=>{const{stars,systems:sl}=stRef.current;if(!stars||!sl)return null;for(let i=0;i<sl.length;i++){const s=stars[i];if(!s)continue;const sr=20+Math.min((sl[i].reward||0),400)/15;const dx=s.x-mx,dy=s.y-my;if(Math.sqrt(dx*dx+dy*dy)<sr+12)return sl[i];}return null;};
-  const onMD=e=>{const canvas=canvasRef.current;if(!canvas)return;const rect=canvas.getBoundingClientRect();const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);const sat=getSatellite(mx,my);const planet=!sat?getPlanet(mx,my):null;const star=!sat&&!planet?getStar(mx,my):null;dragStart.current={x:e.clientX,y:e.clientY,sat,planet,star};e.preventDefault();};
-  const onMM=e=>{const canvas=canvasRef.current;if(!canvas)return;const rect=canvas.getBoundingClientRect();const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);const hovP=getPlanet(mx,my);const hovS=!hovP&&getSatellite(mx,my);const hovStar=!hovP&&!hovS&&getStar(mx,my);canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'default';};
-  const onMU=e=>{const start=dragStart.current;dragStart.current=null;if(!start)return;const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);if(moved<10){if(start.planet){setSelBlock(start.planet.blockId);setTab('blocks');return;}if(start.star){setSelSystem(start.star.id);setTab('blocks');return;}if(start.sat){onQuestClick(start.sat.quest,start.sat.sysId,start.sat.blockId,start.sat.isActive);}}};
+  const onMD=e=>{
+    const canvas=canvasRef.current;if(!canvas)return;
+    const rect=canvas.getBoundingClientRect();
+    const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);
+    const sat=getSatellite(mx,my);
+    const planet=!sat?getPlanet(mx,my):null;
+    const star=!sat&&!planet?getStar(mx,my):null;
+    const isPan=!sat&&!planet&&!star;
+    dragStart.current={x:e.clientX,y:e.clientY,sat,planet,star,isPan};
+    if(isPan) canvas.style.cursor='grabbing';
+    e.preventDefault();
+  };
+  const onMM=e=>{
+    const canvas=canvasRef.current;if(!canvas)return;
+    const rect=canvas.getBoundingClientRect();
+    if(dragStart.current?.isPan){
+      const dx=e.clientX-dragStart.current.x, dy=e.clientY-dragStart.current.y;
+      stRef.current.panX+=dx; stRef.current.panY+=dy;
+      dragStart.current.x=e.clientX; dragStart.current.y=e.clientY;
+      return;
+    }
+    const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);
+    const hovP=getPlanet(mx,my);const hovS=!hovP&&getSatellite(mx,my);const hovStar=!hovP&&!hovS&&getStar(mx,my);
+    canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'grab';
+  };
+  const onMU=e=>{
+    const canvas=canvasRef.current;
+    const start=dragStart.current;dragStart.current=null;
+    if(!start)return;
+    if(start.isPan){if(canvas)canvas.style.cursor='grab';return;}
+    const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);
+    if(moved<10){
+      if(start.planet){setSelBlock(start.planet.blockId);setTab('blocks');return;}
+      if(start.star){setSelSystem(start.star.id);setTab('blocks');return;}
+      if(start.sat){onQuestClick(start.sat.quest,start.sat.sysId,start.sat.blockId,start.sat.isActive);}
+    }
+  };
 
   const allBlocks = systems.flatMap(s=>s.blocks);
   return (
@@ -2126,9 +2159,9 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
           <button className="btn btn-pur" onClick={onAddSystem}>Создать первую</button>
         </div>
       ) : (
-        <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none'}}
+        <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block',touchAction:'none',cursor:'grab'}}
           onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
-          onMouseLeave={()=>{ stRef.current.dragging=null; dragStart.current=null; }}
+          onMouseLeave={()=>{ dragStart.current=null; if(canvasRef.current) canvasRef.current.style.cursor='grab'; }}
           onTouchStart={e=>{ e.preventDefault(); const t=e.touches[0]; onMD({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{}}); }}
           onTouchMove={e=>{ e.preventDefault(); const t=e.touches[0]; onMM({clientX:t.clientX,clientY:t.clientY}); }}
           onTouchEnd={e=>{ e.preventDefault(); const t=e.changedTouches[0]; onMU({clientX:t.clientX,clientY:t.clientY}); }}
