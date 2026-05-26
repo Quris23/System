@@ -499,7 +499,7 @@ const SUPABASE_URL = 'https://hebhndizvzqxlxuepedm.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlYmhuZGl6dnpxeGx4dWVwZWRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODEwNjgsImV4cCI6MjA5NTM1NzA2OH0.lpV6__Bz966fk-O_tRAxLXEwrabe3K_9_pa-ZM_Hwqk';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ── Sound FX ──
+// ── Sound FX — Tron/EDM style ──
 const SFX = (() => {
   const AC = window.AudioContext || window.webkitAudioContext;
   let ctx = null;
@@ -508,20 +508,85 @@ const SFX = (() => {
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   };
-  const tone = (c, freq, t, dur, type='square', vol=0.12) => {
+
+  // Basic oscillator with envelope
+  const osc = (c, out, freq, t, dur, type, vol, toFreq) => {
     const o=c.createOscillator(), g=c.createGain();
-    o.connect(g); g.connect(c.destination);
-    o.type=type; o.frequency.value=freq;
-    g.gain.setValueAtTime(0,t);
-    g.gain.linearRampToValueAtTime(vol,t+0.008);
-    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
-    o.start(t); o.stop(t+dur+0.05);
+    o.connect(g); g.connect(out); o.type=type;
+    o.frequency.setValueAtTime(freq, t);
+    if (toFreq) o.frequency.exponentialRampToValueAtTime(toFreq, t+dur*0.82);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    o.start(t); o.stop(t+dur+0.08);
   };
+
+  // Filter sweep — signature Tron sound
+  const sweep = (c, out, baseFreq, t, dur, vol, fFrom, fTo) => {
+    const o=c.createOscillator(), f=c.createBiquadFilter(), g=c.createGain();
+    o.connect(f); f.connect(g); g.connect(out);
+    o.type='sawtooth'; o.frequency.value=baseFreq;
+    f.type='bandpass'; f.Q.value=4;
+    f.frequency.setValueAtTime(fFrom, t);
+    f.frequency.exponentialRampToValueAtTime(fTo, t+dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    o.start(t); o.stop(t+dur+0.08);
+  };
+
+  // Compressor to glue layers
+  const mkOut = c => {
+    const comp=c.createDynamicsCompressor();
+    comp.threshold.value=-10; comp.ratio.value=4; comp.attack.value=0.003; comp.release.value=0.15;
+    comp.connect(c.destination); return comp;
+  };
+
   return {
-    quest:  ()=>{ const c=get(); if(!c) return; const t=c.currentTime; tone(c,523,t,0.09); tone(c,1047,t+0.08,0.14); },
-    levelUp:()=>{ const c=get(); if(!c) return; const t=c.currentTime; [392,523,659,784,1047].forEach((f,i)=>tone(c,f,t+i*0.1,0.18,'sawtooth',0.09)); },
-    daily:  ()=>{ const c=get(); if(!c) return; const t=c.currentTime; tone(c,440,t,0.09,'sine',0.1); tone(c,660,t+0.08,0.16,'sine',0.11); },
-    buy:    ()=>{ const c=get(); if(!c) return; const t=c.currentTime; [880,1047,1319].forEach((f,i)=>tone(c,f,t+i*0.07,0.11,'sine',0.09)); },
+    // Quest complete — bass punch + rising laser sweep + digital confirm
+    quest: () => {
+      const c=get(); if(!c) return; const out=mkOut(c); const t=c.currentTime;
+      osc(c,out, 80,  t,      0.22, 'sine',     0.30);           // deep bass hit
+      osc(c,out, 160, t,      0.18, 'sine',     0.12);           // bass harmonic
+      sweep(c,out, 110, t+0.02, 0.20, 0.18, 150, 2800);          // Tron sweep
+      osc(c,out, 1760, t+0.16, 0.20, 'square',  0.08);           // digital ding
+      osc(c,out, 3520, t+0.22, 0.14, 'square',  0.04);           // high shimmer
+    },
+
+    // Level Up — cinematic EDM fanfare (Tron/SW style)
+    levelUp: () => {
+      const c=get(); if(!c) return; const out=mkOut(c); const t=c.currentTime;
+      osc(c,out, 55,  t,      0.90, 'sine',     0.28);           // sub bass swell
+      osc(c,out, 110, t+0.04, 0.80, 'sine',     0.14);
+      sweep(c,out, 55, t,     0.85, 0.22, 80, 4000);             // epic filter sweep
+      // Ascending arpeggio — Tron Grid
+      [196,261,329,392,523,659,784,1047].forEach((f,i) => {
+        osc(c,out, f,      t+i*0.09, 0.32, 'sawtooth', 0.10);
+        osc(c,out, f*1.005,t+i*0.09, 0.28, 'square',   0.04);   // slight detune shimmer
+      });
+      osc(c,out, 2093, t+0.78, 0.40, 'square', 0.07);            // final shimmer
+      osc(c,out, 4186, t+0.85, 0.30, 'square', 0.03);
+    },
+
+    // Daily complete — R2-D2 / space UI triple blip
+    daily: () => {
+      const c=get(); if(!c) return; const out=mkOut(c); const t=c.currentTime;
+      [560, 840, 1120].forEach((f, i) => {
+        osc(c,out, f/2, t+i*0.09, 0.13, 'sine',   0.16);        // bass support
+        osc(c,out, f,   t+i*0.09, 0.14, 'square',  0.10);        // blip
+        osc(c,out, f*2, t+i*0.09, 0.10, 'square',  0.04);        // overtone
+      });
+    },
+
+    // Buy — "data acquisition" Tron transaction
+    buy: () => {
+      const c=get(); if(!c) return; const out=mkOut(c); const t=c.currentTime;
+      osc(c,out, 100,  t,      0.40, 'sine',     0.22);          // bass
+      sweep(c,out, 110, t,     0.38, 0.18, 200, 2200);           // sweep up
+      osc(c,out, 523,  t+0.04, 0.12, 'sawtooth', 0.10, 1047);   // quick rise
+      osc(c,out, 1047, t+0.14, 0.32, 'sawtooth', 0.11);          // held tone
+      osc(c,out, 1319, t+0.26, 0.26, 'square',   0.08);          // harmony
+      osc(c,out, 2093, t+0.36, 0.22, 'square',   0.05);          // shimmer
+    },
   };
 })();
 
