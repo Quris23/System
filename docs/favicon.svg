@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#04080f"/>
+  <defs>
+    <radialGradient id="core" cx="50%" cy="44%" r="52%">
+      <stop offset="0%" stop-color="#e8fcff"/>
+      <stop offset="28%" stop-color="#27E7F5"/>
+      <stop offset="70%" stop-color="#0568cc"/>
+      <stop offset="100%" stop-color="#011830" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#27E7F5" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#27E7F5" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="1.8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer halo -->
+  <ellipse cx="16" cy="16" rx="14" ry="14" fill="url(#halo)"/>
+
+  <g filter="url(#glow)" fill="url(#core)">
+    <!-- Top spike / flame tip -->
+    <polygon points="16,1 17.8,9 14.2,9"/>
+    <!-- Left wing -->
+    <polygon points="4,13 13.5,10.5 11,17 5.5,16"/>
+    <!-- Right wing -->
+    <polygon points="28,13 18.5,10.5 21,17 26.5,16"/>
+    <!-- Central shield body -->
+    <polygon points="13,10 19,10 21.5,17 16,24 10.5,17"/>
+    <!-- Bottom drop -->
+    <polygon points="13.5,21.5 18.5,21.5 16,29"/>
+  </g>
+
+  <!-- Bright inner diamond -->
+  <polygon points="16,10.5 18,15 16,19.5 14,15" fill="white" opacity="0.88"/>
+  <!-- Center sparkle -->
+  <circle cx="16" cy="14" r="1.8" fill="white" opacity="0.95"/>
+</svg>
