@@ -1937,7 +1937,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       // ── Star physics: FDG — repulsion everywhere, spring only between neighbors ──
       const IDEAL=320, SPRING_K=0.004, REP_K=120000, DAMP=0.85;
       const N=systems.length;
-      const isNeighbor=(i,j)=>Math.abs(i-j)===1||(Math.min(i,j)===0&&Math.max(i,j)===N-1);
+      const isNeighbor=(i,j)=>Math.abs(i-j)===1;
       const dragIdx=st.draggingStarIdx;
       for(let i=0;i<stars.length;i++){
         if(i===dragIdx) continue; // pinned to mouse
@@ -2012,8 +2012,8 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
 
       // ── Star–star lines: only between chain neighbors ──
       const HOV_COL='#27E7F5';
-      for(let i=0;i<stars.length;i++){
-        const j=(i+1)%stars.length; if(j===i) continue;
+      for(let i=0;i<stars.length-1;i++){
+        const j=i+1;
         const lineT=Math.max(starHoverT[i]||0, starHoverT[j]||0);
         ctx.beginPath(); ctx.moveTo(stars[i].x,stars[i].y); ctx.lineTo(stars[j].x,stars[j].y);
         if(lineT>0.01){
