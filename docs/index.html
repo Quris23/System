@@ -1827,328 +1827,227 @@ function FormModal({ modal, onClose, onSubmit }) {
   );
 }
 
-// ── QUEST GRAPH (roadmap inside block) ──
+// ── QUEST GRID (no ordering) ──
 function QuestGraph({ quests, isActive, onQuestClick, onAddQuest }) {
   if (quests.length === 0) {
     return (
-      <div className="empty" style={{padding:'48px 0'}}>
+      <div className="empty" style={{padding:'36px 0'}}>
         <div className="empty-ic">◎</div>
         <div className="empty-txt">Нет заданий</div>
+        {isActive && <button className="btn btn-pur" style={{marginTop:'16px'}} onClick={onAddQuest}>+ Задание</button>}
       </div>
     );
   }
-  const R = 30, CONN = 70, STEP = R*2+CONN, PAD = 40, INFO = 72;
-  const W = quests.length * STEP + PAD*2 - CONN;
-  const H = R*2 + PAD*2 + INFO;
-  const cy = PAD + R;
-
   return (
-    <div style={{overflowX:'auto', padding:'16px 0 24px'}}>
-      <svg width={W} height={H} style={{display:'block',overflow:'visible'}}>
-        <defs>
-          <filter id="glow-blue"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <filter id="glow-green"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-        </defs>
-
-        {/* Connectors */}
-        {quests.slice(1).map((q,i) => {
-          const x1 = PAD + i*STEP + R;
-          const x2 = PAD + (i+1)*STEP - R;
-          const done = quests[i].done;
-          return (
-            <line key={i}
-              x1={x1+R} y1={cy} x2={x2-R} y2={cy}
-              stroke={done ? '#10b981' : '#1a2d4a'}
-              strokeWidth={2} strokeDasharray={done ? 'none' : '6 4'}
-              opacity={done ? 1 : 0.5}
-            />
-          );
-        })}
-
-        {/* Nodes */}
-        {quests.map((q, i) => {
-          const cx = PAD + i*STEP + R;
-          const done = q.done;
-          const avail = isActive && !done;
-          const locked = !isActive && !done;
-          const fill = done ? 'rgba(16,185,129,0.12)' : avail ? 'rgba(15,168,245,0.12)' : '#080f1c';
-          const stroke = done ? '#10b981' : avail ? '#0fa8f5' : '#1a2d4a';
-          const textCol = done ? '#10b981' : avail ? '#0fa8f5' : '#3a4a5a';
-          const dl = fmtDl(q.deadline);
-
-          return (
-            <g key={q.id} style={{cursor: locked?'default':'pointer'}} onClick={()=>!locked&&onQuestClick(q)}>
-              {avail && <circle cx={cx} cy={cy} r={R+7} fill="none" stroke="rgba(15,168,245,0.2)" strokeWidth={1.5} />}
-              <circle cx={cx} cy={cy} r={R} fill={fill} stroke={stroke} strokeWidth={2}
-                filter={done ? 'url(#glow-green)' : avail ? 'url(#glow-blue)' : 'none'} />
-              <text x={cx} y={cy+6} textAnchor="middle" fontSize={15} fontWeight={800}
-                fill={textCol} fontFamily="Orbitron,sans-serif">
-                {done ? '✓' : i+1}
-              </text>
-              {/* Info below node */}
-              <text x={cx} y={cy+R+18} textAnchor="middle" fontSize={12} fontWeight={700}
-                fill={done?'#5a6478':'#e2e8f0'} fontFamily="Rajdhani,sans-serif">
-                {q.title.length > 13 ? q.title.slice(0,13)+'…' : q.title}
-              </text>
-              {dl && <text x={cx} y={cy+R+33} textAnchor="middle" fontSize={10} fill={dl.color} fontFamily="Rajdhani,sans-serif" fontWeight={600}>{dl.text}</text>}
-              <text x={cx} y={cy+R+(dl?50:36)} textAnchor="middle" fontSize={10}
-                fill="#94eaff" fontFamily="Orbitron,sans-serif">+{q.reward}✦</text>
-            </g>
-          );
-        })}
-      </svg>
+    <div style={{display:'flex',flexWrap:'wrap',gap:'10px',padding:'12px 0 24px'}}>
+      {quests.map(q => {
+        const done = q.done, avail = isActive && !done, locked = !isActive && !done;
+        const dl = fmtDl(q.deadline);
+        return (
+          <div key={q.id} onClick={()=>!locked&&onQuestClick(q)}
+            style={{cursor:locked?'default':'pointer',padding:'12px 14px',borderRadius:'8px',minWidth:'130px',maxWidth:'200px',
+              background:done?'rgba(16,185,129,0.07)':avail?'rgba(15,168,245,0.07)':'rgba(4,8,15,0.5)',
+              border:'1px solid '+(done?'rgba(16,185,129,0.25)':avail?'rgba(15,168,245,0.22)':'var(--bd)'),
+              opacity:locked?0.45:1,transition:'border-color .15s,background .15s',
+              boxShadow:avail?'0 0 12px rgba(15,168,245,0.08)':'none'}}>
+            <div style={{fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'1.5px',marginBottom:'6px',
+              color:done?'var(--grn)':avail?'var(--pur)':'var(--mut)'}}>
+              {done?'✓ ВЫПОЛНЕНО':avail?'⚡ ДОСТУПНО':'○ ЗАПЕРТО'}
+            </div>
+            <div style={{fontWeight:700,fontSize:'14px',color:done?'var(--mut2)':'var(--txt)',marginBottom:q.description?'4px':'0',
+              lineHeight:1.3}}>{q.title}</div>
+            {q.description && (
+              <div style={{fontSize:'12px',color:'var(--mut)',marginBottom:'6px',lineHeight:1.4}}>{q.description}</div>
+            )}
+            <div style={{display:'flex',alignItems:'center',gap:'8px',marginTop:'6px'}}>
+              <span style={{fontFamily:'var(--hud)',fontSize:'10px',color:'var(--gld)',letterSpacing:'1px'}}>+{q.reward||0}✦</span>
+              {dl && <span style={{fontSize:'11px',fontWeight:600,color:dl.color}}>{dl.text}</span>}
+            </div>
+          </div>
+        );
+      })}
+      {isActive && (
+        <div onClick={onAddQuest}
+          style={{cursor:'pointer',padding:'12px 14px',borderRadius:'8px',minWidth:'80px',
+            border:'1px dashed rgba(15,168,245,0.18)',display:'flex',alignItems:'center',
+            justifyContent:'center',color:'rgba(15,168,245,0.35)',fontSize:'26px',
+            transition:'all .15s',userSelect:'none'}}>+</div>
+      )}
     </div>
   );
 }
 
-// ── GRAPH VIEW — force-directed canvas + solar system (stars + planets + satellites) ──
+// ── GRAPH VIEW — true orbital mechanics ──
 function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSystem, setTab, onQuestClick }) {
   const canvasRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const stRef = React.useRef({ nodes:[], systems:[], stars:[], activeId:activeSystem?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:600000, spring:0.45, zoom:1 });
+  const stRef = React.useRef({
+    systems:[], activeId:null, animId:null, zoom:1,
+    stars:[],
+    planetAngles:{}, planetOrbits:{}, planetPos:{},
+    satAngles:{}, satSpeeds:{}, satPos:{},
+  });
   const dragStart = React.useRef(null);
 
-  // Sync systems/activeId into stRef and rebuild nodes
   React.useEffect(() => {
     stRef.current.systems = systems;
     stRef.current.activeId = activeSystem?.id;
-    const canvas = canvasRef.current;
-    const w = canvas ? canvas.width : 800, h = canvas ? canvas.height : 500;
-    const allBlocks = systems.flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
-    const existing = new Map(stRef.current.nodes.map(n=>[n.id,n]));
-    stRef.current.nodes = allBlocks.map((b,i) => {
-      if (existing.has(b.id)) return existing.get(b.id);
-      const angle = (i/Math.max(allBlocks.length,1))*Math.PI*2;
-      return { id:b.id, systemId:b.systemId, x:w/2+Math.cos(angle)*250, y:h/2+Math.sin(angle)*250, vx:0, vy:0 };
-    });
-    // Rebuild star positions
-    const N = systems.length;
-    const starPositions = [];
-    if (N === 1) {
-      starPositions.push({ x: w/2, y: h/2 });
-    } else {
-      for (let i=0; i<N; i++) {
-        const angle = (i/N)*Math.PI*2 - Math.PI/2;
-        const r = Math.min(w,h)*0.28;
-        starPositions.push({ x: w/2+Math.cos(angle)*r, y: h/2+Math.sin(angle)*r });
-      }
-    }
-    stRef.current.stars = starPositions;
-  }, [systems, activeSystem && activeSystem.id]);
+  }, [systems, activeSystem?.id]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current, con = containerRef.current;
     if (!canvas||!con) return;
     const ctx = canvas.getContext('2d');
-    const R=52, ORBT=160, QR=11;
 
-    const resize = () => {
-      canvas.width = con.clientWidth;
-      canvas.height = con.clientHeight;
+    const buildStars = () => {
       const w=canvas.width, h=canvas.height;
-      const allBlocks = (stRef.current.systems||[]).flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
-      if (stRef.current.nodes.length===0 && allBlocks.length>0) {
-        stRef.current.nodes = allBlocks.map((b,i) => {
-          const angle=(i/Math.max(allBlocks.length,1))*Math.PI*2;
-          return { id:b.id, systemId:b.systemId, x:w/2+Math.cos(angle)*250, y:h/2+Math.sin(angle)*250, vx:0, vy:0 };
-        });
-      }
-      // Rebuild star positions on resize
-      const N = (stRef.current.systems||[]).length;
-      const starPositions = [];
-      if (N === 1) {
-        starPositions.push({ x: w/2, y: h/2 });
-      } else {
-        for (let i=0; i<N; i++) {
-          const angle = (i/N)*Math.PI*2 - Math.PI/2;
-          const r = Math.min(w,h)*0.28;
-          starPositions.push({ x: w/2+Math.cos(angle)*r, y: h/2+Math.sin(angle)*r });
-        }
-      }
-      stRef.current.stars = starPositions;
+      const N=(stRef.current.systems||[]).length;
+      const s=[];
+      if(N===1){s.push({x:w/2,y:h/2});}
+      else{for(let i=0;i<N;i++){const a=(i/N)*Math.PI*2-Math.PI/2,r=Math.min(w,h)*0.30;s.push({x:w/2+Math.cos(a)*r,y:h/2+Math.sin(a)*r});}}
+      stRef.current.stars=s;
     };
+
+    const resize = () => { canvas.width=con.clientWidth; canvas.height=con.clientHeight; buildStars(); };
     resize();
     window.addEventListener('resize', resize);
 
     const tick = () => {
       const st=stRef.current;
-      const { nodes, systems, stars, activeId, orbitAngles } = st;
-      const w=canvas.width, h=canvas.height;
+      const{systems,activeId,stars,planetAngles,planetOrbits,satAngles,satSpeeds}=st;
+      const w=canvas.width,h=canvas.height;
+      if(stars.length!==(systems||[]).length) buildStars();
+      const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
 
-      // Flatten all blocks with systemId for rendering
-      const allBlocks = (systems||[]).flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
-
-      // Physics
-      for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i];
-        if (st.dragging===n.id) { n.vx=0; n.vy=0; continue; }
-        let fx=0, fy=0;
-        // Node repulsion
-        for (let j=0; j<nodes.length; j++) {
-          if (i===j) continue;
-          const dx=n.x-nodes[j].x, dy=n.y-nodes[j].y;
-          const d2=Math.max(dx*dx+dy*dy,1), d=Math.sqrt(d2);
-          const rep=st.repulsion; fx+=dx/d*Math.min(rep/d2,800); fy+=dy/d*Math.min(rep/d2,800);
+      // ── Planet orbits ──
+      const planetPos={};
+      for(const blk of allBlocks){
+        const si=(systems||[]).findIndex(s=>s.id===blk.systemId);
+        const star=stars[si]; if(!star) continue;
+        const sys=systems[si];
+        const li=sys.blocks.findIndex(b=>b.id===blk.id);
+        if(!planetOrbits[blk.id]){
+          const r=140+li*75;
+          planetOrbits[blk.id]={radius:r, speed:0.007*Math.pow(140/r,1.5), size:14+Math.min(blk.reward||0,300)/11};
+          planetAngles[blk.id]=(li/Math.max(sys.blocks.length,1))*Math.PI*2;
         }
-        // Spring to neighbour nodes in same system
-        const sameSystemNodes = nodes.filter(nn => nn.systemId === n.systemId && nn.id !== n.id);
-        for (const nb of sameSystemNodes) {
-          const dx=nb.x-n.x, dy=nb.y-n.y;
-          const d=Math.sqrt(dx*dx+dy*dy)||1;
-          const f=Math.max(-80,Math.min(80,(d-300)*st.spring));
-          fx+=dx/d*f; fy+=dy/d*f;
-        }
-        // Star attraction
-        const sysIdx = (systems||[]).findIndex(s => s.id === n.systemId);
-        if (sysIdx >= 0 && stars[sysIdx]) {
-          const star = stars[sysIdx];
-          const dx = star.x - n.x, dy = star.y - n.y;
-          const d = Math.sqrt(dx*dx+dy*dy) || 1;
-          const IDEAL = 220;
-          const f = (d - IDEAL) * 0.08;
-          fx += dx/d*f; fy += dy/d*f;
-        }
-        n.vx=(n.vx+fx)*0.75; n.vy=(n.vy+fy)*0.75;
-        n.x=Math.max(R+ORBT+8,Math.min(w-R-ORBT-8,n.x+n.vx));
-        n.y=Math.max(R+ORBT+8,Math.min(h-R-ORBT-8,n.y+n.vy));
+        planetAngles[blk.id]+=planetOrbits[blk.id].speed;
+        const{radius,size}=planetOrbits[blk.id];
+        planetPos[blk.id]={x:star.x+Math.cos(planetAngles[blk.id])*radius, y:star.y+Math.sin(planetAngles[blk.id])*radius, r:size, sysId:blk.systemId};
       }
+      st.planetPos=planetPos;
 
-      // Update orbit angles
-      for (let i=0; i<nodes.length; i++) {
-        const blkData=allBlocks.find(b=>b.id===nodes[i].id); if(!blkData) continue;
-        const n=nodes[i];
-        if (!orbitAngles[n.id]) orbitAngles[n.id]=blkData.quests.map((_,qi)=>(qi/Math.max(blkData.quests.length,1))*Math.PI*2);
-        const angles=orbitAngles[n.id];
-        while(angles.length<blkData.quests.length) angles.push((angles.length/Math.max(blkData.quests.length,1))*Math.PI*2);
-        angles.length=blkData.quests.length;
-        for(let qi=0;qi<blkData.quests.length;qi++) angles[qi]+=0.007+qi*0.0015;
+      // ── Satellite orbits ──
+      const satPos={};
+      for(const blk of allBlocks){
+        const pp=planetPos[blk.id]; if(!pp||!blk.quests.length) continue;
+        const sys=(systems||[]).find(s=>s.id===blk.systemId);
+        const isAct=sys&&sys.id===activeId;
+        if(!satAngles[blk.id]){
+          satAngles[blk.id]=blk.quests.map((_,qi)=>(qi/Math.max(blk.quests.length,1))*Math.PI*2);
+          satSpeeds[blk.id]=blk.quests.map((_,qi)=>0.026+qi*0.006);
+        }
+        while(satAngles[blk.id].length<blk.quests.length){satAngles[blk.id].push(Math.random()*Math.PI*2);satSpeeds[blk.id].push(0.026+satAngles[blk.id].length*0.006);}
+        satAngles[blk.id].length=blk.quests.length; satSpeeds[blk.id].length=blk.quests.length;
+        satPos[blk.id]=blk.quests.map((q,qi)=>{
+          satAngles[blk.id][qi]+=satSpeeds[blk.id][qi];
+          const ang=satAngles[blk.id][qi], satR=pp.r+22+qi*18;
+          const qr=5+Math.min(q.reward||0,200)/18;
+          return{x:pp.x+Math.cos(ang)*satR, y:pp.y+Math.sin(ang)*satR, r:qr, quest:q, sysId:blk.systemId, blockId:blk.id, isActive:!!isAct};
+        });
       }
+      st.satPos=satPos;
 
+      // ── Draw ──
       ctx.clearRect(0,0,w,h);
       ctx.save();
-      ctx.translate(w/2, h/2);
-      ctx.scale(st.zoom, st.zoom);
-      ctx.translate(-w/2, -h/2);
+      ctx.translate(w/2,h/2); ctx.scale(st.zoom,st.zoom); ctx.translate(-w/2,-h/2);
 
-      // Draw Stars
-      (systems||[]).forEach((sys, si) => {
-        const star = stars[si]; if (!star) return;
-        const isActiveStar = sys.id === activeId;
-        const starR = 24;
-        ctx.save();
-        ctx.translate(star.x, star.y);
-        // Outer glow
-        const grd = ctx.createRadialGradient(0,0,starR*0.3,0,0,starR*2.5);
-        grd.addColorStop(0, isActiveStar ? 'rgba(255,220,80,0.9)' : 'rgba(255,220,80,0.3)');
-        grd.addColorStop(1, 'rgba(255,220,80,0)');
-        ctx.beginPath(); ctx.arc(0,0,starR*2.5,0,Math.PI*2);
-        ctx.fillStyle=grd; ctx.fill();
-        // Core
+      // Stars + planet orbit rings
+      (systems||[]).forEach((sys,si)=>{
+        const star=stars[si]; if(!star) return;
+        const isAct=sys.id===activeId;
+        const starR=20+Math.min(sys.reward||0,400)/15;
+        sys.blocks.forEach(b=>{
+          const orb=planetOrbits[b.id]; if(!orb) return;
+          ctx.beginPath(); ctx.arc(star.x,star.y,orb.radius,0,Math.PI*2);
+          ctx.strokeStyle=isAct?'rgba(15,168,245,0.07)':'rgba(255,255,255,0.03)';
+          ctx.lineWidth=1; ctx.setLineDash([2,9]); ctx.stroke(); ctx.setLineDash([]);
+        });
+        ctx.save(); ctx.translate(star.x,star.y);
+        const g=ctx.createRadialGradient(0,0,starR*0.3,0,0,starR*3.5);
+        g.addColorStop(0,isAct?'rgba(255,220,80,0.95)':'rgba(255,200,60,0.28)');
+        g.addColorStop(1,'rgba(255,200,50,0)');
+        ctx.beginPath(); ctx.arc(0,0,starR*3.5,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
         ctx.beginPath(); ctx.arc(0,0,starR,0,Math.PI*2);
-        ctx.fillStyle = sys.completed ? 'rgba(16,185,129,0.9)' : isActiveStar ? 'rgba(255,200,50,0.95)' : 'rgba(100,80,20,0.5)';
+        ctx.fillStyle=sys.completed?'rgba(16,185,129,0.9)':isAct?'rgba(255,200,50,0.97)':'rgba(80,60,10,0.55)';
         ctx.fill();
-        ctx.strokeStyle = sys.completed ? '#10b981' : isActiveStar ? 'rgba(255,220,80,0.9)' : 'rgba(100,80,20,0.6)';
-        ctx.lineWidth = 1.5; ctx.stroke();
-        // Label
-        ctx.font = '700 11px Orbitron,sans-serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(sys.title.toUpperCase().slice(0,12), 0, starR+16);
+        ctx.strokeStyle=sys.completed?'#10b981':isAct?'rgba(255,230,80,0.95)':'rgba(120,90,20,0.45)';
+        ctx.lineWidth=1.5; ctx.stroke();
+        ctx.font='700 10px Orbitron,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.8)';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(sys.title.toUpperCase().slice(0,12),0,starR+15);
         ctx.restore();
       });
 
-      // Draw lines from star to each of its planet nodes
-      (systems||[]).forEach((sys, si) => {
-        const star = stars[si]; if (!star) return;
-        const sysNodes = nodes.filter(n => n.systemId === sys.id);
-        const isActiveStar = sys.id === activeId;
-        for (const n of sysNodes) {
-          ctx.beginPath(); ctx.moveTo(star.x, star.y); ctx.lineTo(n.x, n.y);
-          ctx.strokeStyle = isActiveStar ? 'rgba(15,168,245,0.15)' : 'rgba(30,50,80,0.3)';
-          ctx.lineWidth = 1; ctx.setLineDash([4,8]); ctx.stroke(); ctx.setLineDash([]);
-        }
-      });
-
-      // Orbit rings
-      for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i];
-        const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData||blkData.quests.length===0) continue;
-        const sys=(systems||[]).find(s=>s.id===n.systemId);
-        const isAct=sys&&sys.id===activeId, isDone=blkData.completed;
-        ctx.beginPath(); ctx.arc(n.x,n.y,ORBT,0,Math.PI*2);
-        ctx.strokeStyle=isDone?'rgba(16,185,129,0.18)':isAct?'rgba(15,168,245,0.18)':'rgba(255,255,255,0.05)';
-        ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.stroke(); ctx.setLineDash([]);
+      // Planet → star lines
+      for(const blk of allBlocks){
+        const pp=planetPos[blk.id]; if(!pp) continue;
+        const si=(systems||[]).findIndex(s=>s.id===blk.systemId);
+        const star=stars[si]; if(!star) continue;
+        const sys=systems[si]; const isAct=sys&&sys.id===activeId;
+        ctx.beginPath(); ctx.moveTo(star.x,star.y); ctx.lineTo(pp.x,pp.y);
+        ctx.strokeStyle=isAct?'rgba(15,168,245,0.09)':'rgba(30,50,80,0.13)';
+        ctx.lineWidth=1; ctx.setLineDash([2,9]); ctx.stroke(); ctx.setLineDash([]);
       }
 
       // Planets
-      for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i];
-        const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData) continue;
-        const sys=(systems||[]).find(s=>s.id===n.systemId);
-        const isAct=sys&&sys.id===activeId, isDone=blkData.completed;
-        const total=blkData.quests.length, done=blkData.quests.filter(q=>q.done).length;
-        if (isAct) {
-          const g=ctx.createRadialGradient(n.x,n.y,R-8,n.x,n.y,R+28);
-          g.addColorStop(0,'rgba(15,168,245,0.28)'); g.addColorStop(1,'rgba(15,168,245,0)');
-          ctx.beginPath(); ctx.arc(n.x,n.y,R+28,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-        }
-        if (isDone) {
-          const g=ctx.createRadialGradient(n.x,n.y,R-8,n.x,n.y,R+22);
-          g.addColorStop(0,'rgba(16,185,129,0.22)'); g.addColorStop(1,'rgba(16,185,129,0)');
-          ctx.beginPath(); ctx.arc(n.x,n.y,R+22,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-        }
-        const pg=ctx.createRadialGradient(n.x-R*0.3,n.y-R*0.3,R*0.1,n.x,n.y,R);
-        if (isDone) { pg.addColorStop(0,'rgba(20,100,70,0.92)'); pg.addColorStop(1,'rgba(8,40,28,0.96)'); }
-        else if (isAct) { pg.addColorStop(0,'rgba(20,60,160,0.92)'); pg.addColorStop(1,'rgba(6,20,60,0.96)'); }
-        else { pg.addColorStop(0,'rgba(20,30,50,0.9)'); pg.addColorStop(1,'rgba(4,10,20,0.96)'); }
-        ctx.beginPath(); ctx.arc(n.x,n.y,R,0,Math.PI*2); ctx.fillStyle=pg; ctx.fill();
+      for(const blk of allBlocks){
+        const pp=planetPos[blk.id]; if(!pp) continue;
+        const sys=(systems||[]).find(s=>s.id===blk.systemId);
+        const isAct=sys&&sys.id===activeId, isDone=blk.completed;
+        const R=pp.r;
+        // Satellite orbit rings
+        blk.quests.forEach((_,qi)=>{
+          const satR=R+22+qi*18;
+          ctx.beginPath(); ctx.arc(pp.x,pp.y,satR,0,Math.PI*2);
+          ctx.strokeStyle=isDone?'rgba(16,185,129,0.1)':isAct?'rgba(15,168,245,0.1)':'rgba(255,255,255,0.03)';
+          ctx.lineWidth=0.8; ctx.setLineDash([2,7]); ctx.stroke(); ctx.setLineDash([]);
+        });
+        // Glow
+        if(isAct){const g=ctx.createRadialGradient(pp.x,pp.y,R-4,pp.x,pp.y,R+30);g.addColorStop(0,'rgba(15,168,245,0.22)');g.addColorStop(1,'rgba(15,168,245,0)');ctx.beginPath();ctx.arc(pp.x,pp.y,R+30,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();}
+        if(isDone){const g=ctx.createRadialGradient(pp.x,pp.y,R-4,pp.x,pp.y,R+20);g.addColorStop(0,'rgba(16,185,129,0.22)');g.addColorStop(1,'rgba(16,185,129,0)');ctx.beginPath();ctx.arc(pp.x,pp.y,R+20,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();}
+        // Body
+        const pg=ctx.createRadialGradient(pp.x-R*0.3,pp.y-R*0.3,R*0.1,pp.x,pp.y,R);
+        if(isDone){pg.addColorStop(0,'rgba(20,100,70,0.92)');pg.addColorStop(1,'rgba(8,40,28,0.96)');}
+        else if(isAct){pg.addColorStop(0,'rgba(20,60,160,0.92)');pg.addColorStop(1,'rgba(6,20,60,0.96)');}
+        else{pg.addColorStop(0,'rgba(20,30,50,0.9)');pg.addColorStop(1,'rgba(4,10,20,0.96)');}
+        ctx.beginPath();ctx.arc(pp.x,pp.y,R,0,Math.PI*2);ctx.fillStyle=pg;ctx.fill();
         ctx.strokeStyle=isDone?'#10b981':isAct?'#0fa8f5':'#1a2d4a';
-        ctx.lineWidth=isAct?2.5:1.8; ctx.stroke();
-        if (total>0&&done>0) {
-          ctx.beginPath(); ctx.arc(n.x,n.y,R+5,-Math.PI/2,-Math.PI/2+(done/total)*Math.PI*2);
-          ctx.strokeStyle=isDone?'#10b981':'#0fa8f5'; ctx.lineWidth=3; ctx.stroke();
-        }
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font='bold 12px Orbitron,monospace';
-        ctx.fillStyle=isDone?'#10b981':isAct?'#0fa8f5':'#2a3a4a';
-        ctx.fillText(isDone?'V':isAct?'>':'x', n.x, n.y-12);
-        ctx.font='bold 12px Rajdhani,sans-serif';
+        ctx.lineWidth=isAct?2:1.5;ctx.stroke();
+        // Progress arc
+        const tot=blk.quests.length,dn=blk.quests.filter(q=>q.done).length;
+        if(tot>0&&dn>0){ctx.beginPath();ctx.arc(pp.x,pp.y,R+5,-Math.PI/2,-Math.PI/2+(dn/tot)*Math.PI*2);ctx.strokeStyle=isDone?'#10b981':'#0fa8f5';ctx.lineWidth=2.5;ctx.stroke();}
+        // Label
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        const fs=Math.max(9,Math.round(R*0.58));
+        ctx.font=`bold ${fs}px Rajdhani,sans-serif`;
         ctx.fillStyle=isDone?'#10b981':isAct?'#e2e8f0':'#5a6478';
-        const t=blkData.title.length>13?blkData.title.slice(0,13)+'...':blkData.title;
-        ctx.fillText(t, n.x, n.y+4);
-        if (total>0) {
-          ctx.font='bold 9px Orbitron,sans-serif';
-          ctx.fillStyle=isDone?'rgba(16,185,129,0.8)':'rgba(58,90,122,0.9)';
-          ctx.fillText(done+'/'+total, n.x, n.y+17);
-        }
+        const t=blk.title.length>12?blk.title.slice(0,12)+'…':blk.title;
+        ctx.fillText(t,pp.x,pp.y-(tot>0?7:0));
+        if(tot>0){ctx.font=`bold 9px Orbitron,sans-serif`;ctx.fillStyle=isDone?'rgba(16,185,129,0.8)':'rgba(58,90,122,0.9)';ctx.fillText(`${dn}/${tot}`,pp.x,pp.y+9);}
       }
 
       // Satellites
-      for (let i=0; i<nodes.length; i++) {
-        const n=nodes[i];
-        const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData||blkData.quests.length===0) continue;
-        const sys=(systems||[]).find(s=>s.id===n.systemId);
-        const isAct=sys&&sys.id===activeId, isDone=blkData.completed;
-        const angles=orbitAngles[n.id]||[];
-        for (let qi=0; qi<blkData.quests.length; qi++) {
-          const q=blkData.quests[qi], angle=angles[qi]||0;
-          const qx=n.x+Math.cos(angle)*ORBT;
-          const qy=n.y+Math.sin(angle)*ORBT;
-          const qDone=q.done;
-          if (isAct&&!qDone) {
-            const sg=ctx.createRadialGradient(qx,qy,0,qx,qy,QR+6);
-            sg.addColorStop(0,'rgba(15,168,245,0.35)'); sg.addColorStop(1,'rgba(15,168,245,0)');
-            ctx.beginPath(); ctx.arc(qx,qy,QR+6,0,Math.PI*2); ctx.fillStyle=sg; ctx.fill();
-          }
-          ctx.beginPath(); ctx.arc(qx,qy,QR,0,Math.PI*2);
+      for(const blk of allBlocks){
+        const sats=satPos[blk.id]; if(!sats) continue;
+        for(const sat of sats){
+          const{x,y,r,quest:q,isActive:isAct}=sat,qDone=q.done;
+          if(isAct&&!qDone){const sg=ctx.createRadialGradient(x,y,0,x,y,r+6);sg.addColorStop(0,'rgba(15,168,245,0.4)');sg.addColorStop(1,'rgba(15,168,245,0)');ctx.beginPath();ctx.arc(x,y,r+6,0,Math.PI*2);ctx.fillStyle=sg;ctx.fill();}
+          ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
           ctx.fillStyle=qDone?'rgba(16,185,129,0.85)':isAct?'rgba(15,168,245,0.75)':'rgba(15,25,45,0.85)';
-          ctx.fill();
-          ctx.strokeStyle=qDone?'#10b981':isAct?'#0fa8f5':'#1a2d4a';
-          ctx.lineWidth=1.5; ctx.stroke();
-          ctx.textAlign='center'; ctx.textBaseline='middle';
-          ctx.font='bold 8px Orbitron,monospace';
-          ctx.fillStyle=qDone||isAct?'#fff':'#3a5a7a';
-          ctx.fillText(qDone?'v':qi+1, qx, qy);
+          ctx.fill();ctx.strokeStyle=qDone?'#10b981':isAct?'#0fa8f5':'#1a2d4a';ctx.lineWidth=1.2;ctx.stroke();
+          if(r>=7){ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`bold ${Math.max(6,Math.round(r*0.6))}px Orbitron,monospace`;ctx.fillStyle=qDone||isAct?'#fff':'#3a5a7a';ctx.fillText(qDone?'✓':'·',x,y);}
         }
       }
 
@@ -2157,102 +2056,18 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
     };
     stRef.current.animId=requestAnimationFrame(tick);
 
-    const onWheel = e => {
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      stRef.current.zoom = Math.max(0.25, Math.min(4, stRef.current.zoom * factor));
-    };
-    canvas.addEventListener('wheel', onWheel, { passive: false });
+    const onWheel=e=>{e.preventDefault();const f=e.deltaY>0?0.9:1.1;stRef.current.zoom=Math.max(0.2,Math.min(5,stRef.current.zoom*f));};
+    canvas.addEventListener('wheel',onWheel,{passive:false});
+    return()=>{cancelAnimationFrame(stRef.current.animId);window.removeEventListener('resize',resize);canvas.removeEventListener('wheel',onWheel);};
+  },[]);
 
-    return () => { cancelAnimationFrame(stRef.current.animId); window.removeEventListener('resize',resize); canvas.removeEventListener('wheel',onWheel); };
-  }, []);
-
-  const toWorld = (mx, my) => {
-    const canvas=canvasRef.current; if(!canvas) return {x:mx,y:my};
-    const w=canvas.width, h=canvas.height, z=stRef.current.zoom;
-    return { x:(mx-w/2)/z+w/2, y:(my-h/2)/z+h/2 };
-  };
-  const getSatellite = (mx, my) => {
-    const { nodes, systems, orbitAngles } = stRef.current;
-    const ORBT=160, QR=15;
-    const allBlocks = (systems||[]).flatMap(s => s.blocks.map(b => ({...b, systemId:s.id})));
-    for (let i=0; i<nodes.length; i++) {
-      const n=nodes[i];
-      const blkData=allBlocks.find(b=>b.id===n.id); if(!blkData) continue;
-      const sys=(systems||[]).find(s=>s.id===n.systemId);
-      const angles=orbitAngles[n.id]||[];
-      for (let qi=0; qi<blkData.quests.length; qi++) {
-        const angle=angles[qi]||0;
-        const qx=n.x+Math.cos(angle)*ORBT, qy=n.y+Math.sin(angle)*ORBT;
-        const dx=qx-mx, dy=qy-my;
-        if (Math.sqrt(dx*dx+dy*dy)<QR) return { quest:blkData.quests[qi], systemId:n.systemId, blockId:blkData.id, isActive:sys&&sys.id===stRef.current.activeId };
-      }
-    }
-    return null;
-  };
-
-  const getStar = (mx, my) => {
-    const { stars, systems: sysList } = stRef.current;
-    if (!stars || !sysList) return null;
-    const STAR_R = 36;
-    for (let i = 0; i < sysList.length; i++) {
-      const star = stars[i]; if (!star) continue;
-      const dx = star.x - mx, dy = star.y - my;
-      if (Math.sqrt(dx*dx+dy*dy) < STAR_R) return sysList[i];
-    }
-    return null;
-  };
-
-  const getNode = e => {
-    const canvas=canvasRef.current; if(!canvas) return null;
-    const rect=canvas.getBoundingClientRect();
-    const {x:mx,y:my}=toWorld(e.clientX-rect.left, e.clientY-rect.top);
-    return stRef.current.nodes.find(n=>{ const dx=n.x-mx,dy=n.y-my; return Math.sqrt(dx*dx+dy*dy)<56; });
-  };
-  const onMD = e => {
-    const n=getNode(e);
-    if(n){
-      stRef.current.dragging=n.id;
-      dragStart.current={id:n.id, x:e.clientX, y:e.clientY, sat:null};
-      e.preventDefault();
-    } else {
-      const canvas=canvasRef.current;
-      const rect=canvas&&canvas.getBoundingClientRect();
-      const {x:mx,y:my}=toWorld(rect?e.clientX-rect.left:0, rect?e.clientY-rect.top:0);
-      const sat=getSatellite(mx,my);
-      const star=!sat?getStar(mx,my):null;
-      dragStart.current={id:null, x:e.clientX, y:e.clientY, sat, star};
-      e.preventDefault();
-    }
-  };
-  const onMM = e => {
-    const canvas=canvasRef.current; if(!canvas) return;
-    const rect=canvas.getBoundingClientRect();
-    const {x:mx,y:my}=toWorld(e.clientX-rect.left, e.clientY-rect.top);
-    if(stRef.current.dragging){
-      const n=stRef.current.nodes.find(n=>n.id===stRef.current.dragging);
-      if(n){ n.x=mx; n.y=my; dragStart.current=null; }
-    }
-    const hovP=stRef.current.nodes.find(n=>{ const dx=n.x-mx,dy=n.y-my; return Math.sqrt(dx*dx+dy*dy)<56; });
-    const hovS=!hovP && getSatellite(mx,my);
-    const hovStar=!hovP && !hovS && getStar(mx,my);
-    canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'default';
-  };
-  const onMU = e => {
-    const start=dragStart.current;
-    stRef.current.dragging=null; dragStart.current=null;
-    if(!start) return;
-    const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);
-    if(moved<10){
-      if(start.id){
-        const allBlocks = (stRef.current.systems||[]).flatMap(s=>s.blocks);
-        const blk=allBlocks.find(b=>b.id===start.id);
-        if(blk){ setSelBlock(blk.id); setTab('blocks'); return; }
-      }
-      if(start.star){ setSelSystem(start.star.id); setTab('blocks'); return; }
-      if(start.sat){ onQuestClick(start.sat.quest, start.sat.systemId, start.sat.blockId, start.sat.isActive); }
-    }
-  };
+  const toWorld=(mx,my)=>{const canvas=canvasRef.current;if(!canvas)return{x:mx,y:my};const w=canvas.width,h=canvas.height,z=stRef.current.zoom;return{x:(mx-w/2)/z+w/2,y:(my-h/2)/z+h/2};};
+  const getPlanet=(mx,my)=>{for(const[blockId,pp]of Object.entries(stRef.current.planetPos||{})){const dx=pp.x-mx,dy=pp.y-my;if(Math.sqrt(dx*dx+dy*dy)<pp.r+10)return{blockId,...pp};}return null;};
+  const getSatellite=(mx,my)=>{for(const sats of Object.values(stRef.current.satPos||{})){for(const sat of sats){const dx=sat.x-mx,dy=sat.y-my;if(Math.sqrt(dx*dx+dy*dy)<sat.r+6)return sat;}}return null;};
+  const getStar=(mx,my)=>{const{stars,systems:sl}=stRef.current;if(!stars||!sl)return null;for(let i=0;i<sl.length;i++){const s=stars[i];if(!s)continue;const sr=20+Math.min((sl[i].reward||0),400)/15;const dx=s.x-mx,dy=s.y-my;if(Math.sqrt(dx*dx+dy*dy)<sr+12)return sl[i];}return null;};
+  const onMD=e=>{const canvas=canvasRef.current;if(!canvas)return;const rect=canvas.getBoundingClientRect();const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);const sat=getSatellite(mx,my);const planet=!sat?getPlanet(mx,my):null;const star=!sat&&!planet?getStar(mx,my):null;dragStart.current={x:e.clientX,y:e.clientY,sat,planet,star};e.preventDefault();};
+  const onMM=e=>{const canvas=canvasRef.current;if(!canvas)return;const rect=canvas.getBoundingClientRect();const{x:mx,y:my}=toWorld(e.clientX-rect.left,e.clientY-rect.top);const hovP=getPlanet(mx,my);const hovS=!hovP&&getSatellite(mx,my);const hovStar=!hovP&&!hovS&&getStar(mx,my);canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'default';};
+  const onMU=e=>{const start=dragStart.current;dragStart.current=null;if(!start)return;const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);if(moved<10){if(start.planet){setSelBlock(start.planet.blockId);setTab('blocks');return;}if(start.star){setSelSystem(start.star.id);setTab('blocks');return;}if(start.sat){onQuestClick(start.sat.quest,start.sat.sysId,start.sat.blockId,start.sat.isActive);}}};
 
   const allBlocks = systems.flatMap(s=>s.blocks);
   return (
