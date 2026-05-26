@@ -1933,8 +1933,10 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       if(stars.length!==(systems||[]).length) buildStars();
       const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
 
-      // ── Star physics: FDG — repulsion + spring attraction + weak center ──
-      const IDEAL=500, SPRING_K=0.003, REP_K=120000, DAMP=0.85;
+      // ── Star physics: FDG — repulsion everywhere, spring only between neighbors ──
+      const IDEAL=320, SPRING_K=0.004, REP_K=120000, DAMP=0.85;
+      const N=systems.length;
+      const isNeighbor=(i,j)=>Math.abs(i-j)===1||(Math.min(i,j)===0&&Math.max(i,j)===N-1);
       const dragIdx=st.draggingStarIdx;
       for(let i=0;i<stars.length;i++){
         if(i===dragIdx) continue; // pinned to mouse
@@ -1944,13 +1946,11 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
           if(i===j) continue;
           const dx=stars[i].x-stars[j].x,dy=stars[i].y-stars[j].y;
           const d=Math.sqrt(dx*dx+dy*dy)||1;
-          // repulsion (always pushes away)
-          const rep=Math.min(REP_K/(d*d),350);
-          fx+=dx/d*rep; fy+=dy/d*rep;
-          // spring: pulls toward ideal distance (only when farther than IDEAL)
-          if(d>IDEAL){const spring=(d-IDEAL)*SPRING_K; fx-=dx/d*spring; fy-=dy/d*spring;}
+          // repulsion between all stars
+          fx+=dx/d*Math.min(REP_K/(d*d),350); fy+=dy/d*Math.min(REP_K/(d*d),350);
+          // spring attraction only between chain neighbors
+          if(isNeighbor(i,j)&&d>IDEAL){const s=(d-IDEAL)*SPRING_K; fx-=dx/d*s; fy-=dy/d*s;}
         }
-        // Weak center gravity so stars don't drift off-screen
         fx+=(w/2-stars[i].x)*0.001; fy+=(h/2-stars[i].y)*0.001;
         starVels[i].vx=(starVels[i].vx+fx)*DAMP; starVels[i].vy=(starVels[i].vy+fy)*DAMP;
         stars[i]={x:stars[i].x+starVels[i].vx, y:stars[i].y+starVels[i].vy};
@@ -2009,30 +2009,28 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       ctx.save();
       ctx.translate(w/2+st.panX,h/2+st.panY); ctx.scale(st.zoom,st.zoom); ctx.translate(-w/2,-h/2);
 
-      // ── Star–star dashed lines ──
+      // ── Star–star lines: only between chain neighbors ──
       const HOV_COL='#27E7F5';
       for(let i=0;i<stars.length;i++){
-        for(let j=i+1;j<stars.length;j++){
-          const lineT=Math.max(starHoverT[i]||0, starHoverT[j]||0);
-          ctx.beginPath(); ctx.moveTo(stars[i].x,stars[i].y); ctx.lineTo(stars[j].x,stars[j].y);
-          if(lineT>0.01){
-            ctx.shadowColor=HOV_COL; ctx.shadowBlur=lerp(0,10,lineT);
-            ctx.strokeStyle=`rgba(39,231,245,${lerp(0,0.85,lineT)})`; ctx.lineWidth=lerp(1,1.5,lineT); ctx.setLineDash([]);
-          } else {
-            ctx.shadowBlur=0;
-            ctx.strokeStyle=`rgba(255,255,255,${lerp(0.05,0.01,globalHoverT)})`; ctx.lineWidth=1; ctx.setLineDash([5,12]);
-          }
-          ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur=0;
+        const j=(i+1)%stars.length; if(j===i) continue;
+        const lineT=Math.max(starHoverT[i]||0, starHoverT[j]||0);
+        ctx.beginPath(); ctx.moveTo(stars[i].x,stars[i].y); ctx.lineTo(stars[j].x,stars[j].y);
+        if(lineT>0.01){
+          ctx.shadowColor=HOV_COL; ctx.shadowBlur=lerp(0,10,lineT);
+          ctx.strokeStyle=`rgba(39,231,245,${lerp(0.15,0.9,lineT)})`; ctx.lineWidth=lerp(1,1.5,lineT); ctx.setLineDash([]);
+        } else {
+          ctx.shadowBlur=0;
+          ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.setLineDash([5,12]);
         }
+        ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur=0;
       }
 
       // ── Stars + planet orbit rings ──
       (systems||[]).forEach((sys,si)=>{
         const star=stars[si]; if(!star) return;
         const isAct=sys.id===activeId;
-        const hT=starHoverT[si]||0;                        // 1 = this star is hovered
-        const connT=globalHoverT*(1-hT)*0.55;              // connected stars glow at 55%
-        const effectT=Math.max(hT,connT);                  // combined glow intensity
+        const hT=starHoverT[si]||0;   // 1 = this star is hovered, others stay normal
+        const effectT=hT;
         const ownCol=sys.color||'#ffd700';
         const drawCol=lerpHex(ownCol,HOV_COL,effectT);
         const starR=20+Math.min(sys.reward||0,400)/15;
@@ -2070,9 +2068,8 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
         ctx.restore();
       });
 
-      // Planet → star lines + Planets + Satellites — fade when hover active
-      const orbAlpha=lerp(1,0.04,globalHoverT);
-      ctx.save(); ctx.globalAlpha=orbAlpha;
+      // Planet → star lines + Planets + Satellites
+      ctx.save();
 
       for(const blk of allBlocks){
         const pp=planetPos[blk.id]; if(!pp) continue;
