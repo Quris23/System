@@ -1931,7 +1931,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
 
       // ── Star physics: FDG — repulsion + spring attraction + weak center ──
-      const IDEAL=260, SPRING_K=0.004, REP_K=70000, DAMP=0.85;
+      const IDEAL=500, SPRING_K=0.003, REP_K=120000, DAMP=0.85;
       const dragIdx=st.draggingStarIdx;
       for(let i=0;i<stars.length;i++){
         if(i===dragIdx) continue; // pinned to mouse
@@ -1998,15 +1998,15 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       ctx.translate(w/2+st.panX,h/2+st.panY); ctx.scale(st.zoom,st.zoom); ctx.translate(-w/2,-h/2);
 
       // ── Star–star dashed lines ──
+      const HOV_COL='#27E7F5';
       for(let i=0;i<stars.length;i++){
         for(let j=i+1;j<stars.length;j++){
           const si=(systems||[])[i], sj=(systems||[])[j];
           const lit=st.hoveredStarId&&(si?.id===st.hoveredStarId||sj?.id===st.hoveredStarId);
           ctx.beginPath(); ctx.moveTo(stars[i].x,stars[i].y); ctx.lineTo(stars[j].x,stars[j].y);
           if(lit){
-            // Glowing highlighted connection
-            ctx.shadowColor='rgba(255,255,255,0.6)'; ctx.shadowBlur=6;
-            ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+            ctx.shadowColor=HOV_COL; ctx.shadowBlur=10;
+            ctx.strokeStyle=HOV_COL; ctx.lineWidth=1.5; ctx.setLineDash([]);
           } else {
             ctx.shadowBlur=0;
             ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1; ctx.setLineDash([5,12]);
@@ -2019,25 +2019,30 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       (systems||[]).forEach((sys,si)=>{
         const star=stars[si]; if(!star) return;
         const isAct=sys.id===activeId;
-        const col=sys.color||'#ffd700';
+        const isHov=!!st.hoveredStarId&&sys.id===st.hoveredStarId;
+        const isLit=!!st.hoveredStarId&&sys.id!==st.hoveredStarId; // connected but not the hovered one
+        const drawCol=isHov||isLit?HOV_COL:(sys.color||'#ffd700');
         const starR=20+Math.min(sys.reward||0,400)/15;
         sys.blocks.forEach(b=>{
           const orb=planetOrbits[b.id]; if(!orb) return;
           ctx.beginPath(); ctx.arc(star.x,star.y,orb.radius,0,Math.PI*2);
-          ctx.strokeStyle=isAct?hexRgba(col,0.09):'rgba(255,255,255,0.03)';
+          ctx.strokeStyle=isAct?hexRgba(drawCol,0.09):'rgba(255,255,255,0.03)';
           ctx.lineWidth=1; ctx.setLineDash([2,9]); ctx.stroke(); ctx.setLineDash([]);
         });
         ctx.save(); ctx.translate(star.x,star.y);
+        if(isHov||isLit){ ctx.shadowColor=HOV_COL; ctx.shadowBlur=isHov?28:16; }
         const g=ctx.createRadialGradient(0,0,starR*0.3,0,0,starR*3.5);
-        g.addColorStop(0,hexRgba(col,isAct?0.95:0.28));
-        g.addColorStop(1,hexRgba(col,0));
+        g.addColorStop(0,hexRgba(drawCol,isHov?1:isLit?0.7:isAct?0.95:0.28));
+        g.addColorStop(1,hexRgba(drawCol,0));
         ctx.beginPath(); ctx.arc(0,0,starR*3.5,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
         ctx.beginPath(); ctx.arc(0,0,starR,0,Math.PI*2);
-        ctx.fillStyle=sys.completed?'rgba(16,185,129,0.9)':hexRgba(col,isAct?0.97:0.35);
+        ctx.fillStyle=sys.completed?'rgba(16,185,129,0.9)':hexRgba(drawCol,isHov?1:isLit?0.75:isAct?0.97:0.35);
         ctx.fill();
-        ctx.strokeStyle=sys.completed?'#10b981':hexRgba(col,isAct?0.95:0.4);
-        ctx.lineWidth=1.5; ctx.stroke();
-        ctx.font='700 10px Orbitron,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.8)';
+        ctx.strokeStyle=sys.completed?'#10b981':isHov||isLit?HOV_COL:hexRgba(drawCol,isAct?0.95:0.4);
+        ctx.lineWidth=isHov?2.5:1.5; ctx.stroke();
+        ctx.shadowBlur=0;
+        ctx.font='700 10px Orbitron,sans-serif';
+        ctx.fillStyle=isHov||isLit?HOV_COL:'rgba(255,255,255,0.8)';
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(sys.title.toUpperCase().slice(0,12),0,starR+15);
         ctx.restore();
