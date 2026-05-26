@@ -701,12 +701,11 @@ function App({ session }) {
   const [questDetail, setQuestDetail] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [selBlock, setSelBlock] = useState(null);
+  const [selSystem, setSelSystem] = useState(null);
 
   useEffect(() => {
-    console.log('[SYS] session.user.id:', session?.user?.id);
     sb.from('user_state').select('state').eq('user_id', session.user.id).single()
       .then(({ data, error }) => {
-        console.log('[SYS] load data:', data, 'error:', error);
         if (data?.state) {
           let s = data.state;
           s = migrateSystems(s);
@@ -722,7 +721,7 @@ function App({ session }) {
     if (!loaded) return;
     const t = setTimeout(() => {
       sb.from('user_state').upsert({ user_id: session.user.id, state: st, updated_at: new Date().toISOString() })
-        .then(({ error }) => { if (error) console.error('[SYS] save error:', error); else console.log('[SYS] saved ok'); });
+        .then(({ error }) => { if (error) console.error('[SYS] save error:', error); });
     }, 600);
     return () => clearTimeout(t);
   }, [st, loaded]);
@@ -916,6 +915,8 @@ function App({ session }) {
             activeSystem={activeSystem}
             selBlock={selBlock}
             setSelBlock={setSelBlock}
+            selSystem={selSystem}
+            setSelSystem={setSelSystem}
             onAddSystem={()=>setModal({type:'addSystem'})}
             onDelSystem={id=>setSt(p=>({...p,systems:p.systems.filter(s=>s.id!==id)}))}
             onSaveSystem={(id,data)=>setSt(p=>({...p,systems:p.systems.map(s=>s.id!==id?s:{...s,...data})}))}
@@ -932,6 +933,7 @@ function App({ session }) {
             activeSystem={activeSystem}
             onAddSystem={()=>setModal({type:'addSystem'})}
             setSelBlock={setSelBlock}
+            setSelSystem={setSelSystem}
             setTab={setTab}
             onQuestClick={(quest,systemId,blockId,isActive)=>setQuestDetail({quest,systemId,blockId,isActive})}
           />
@@ -1013,7 +1015,7 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
 }
 
 // ── BLOCKS VIEW ──
-function BlocksView({ systems, activeSystem, selBlock, setSelBlock, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick }) {
+function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick }) {
   const activeSystemId = activeSystem?.id;
   // Find selected block across all systems
   let selData = null, selSystemId = null;
@@ -1021,6 +1023,13 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, onAddSystem,
     const b = sys.blocks.find(b=>b.id===selBlock);
     if (b) { selData = b; selSystemId = sys.id; break; }
   }
+  // Scroll to highlighted system when navigating from graph
+  const sysRefs = React.useRef({});
+  React.useEffect(() => {
+    if (selSystem && sysRefs.current[selSystem]) {
+      sysRefs.current[selSystem].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [selSystem]);
 
   return (
     <div className="bv-layout">
@@ -1041,8 +1050,10 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, onAddSystem,
         {systems.map((sys) => {
           const isActive = sys.id === activeSystemId;
           const isLocked = !sys.completed && !isActive;
+          const isSelFromGraph = sys.id === selSystem;
           return (
-            <div key={sys.id}>
+            <div key={sys.id} ref={el => sysRefs.current[sys.id] = el}
+              style={isSelFromGraph ? {borderRadius:'8px', outline:'1px solid rgba(15,168,245,0.45)', marginBottom:'6px'} : {}}>
               <SystemHeader
                 sys={sys}
                 isActive={isActive}
@@ -1741,7 +1752,7 @@ function QuestGraph({ quests, isActive, onQuestClick, onAddQuest }) {
 }
 
 // ── GRAPH VIEW — force-directed canvas + solar system (stars + planets + satellites) ──
-function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setTab, onQuestClick }) {
+function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSystem, setTab, onQuestClick }) {
   const canvasRef = React.useRef(null);
   const containerRef = React.useRef(null);
   const stRef = React.useRef({ nodes:[], systems:[], stars:[], activeId:activeSystem?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:600000, spring:0.45, zoom:1 });
@@ -2030,6 +2041,18 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setTab, on
     return null;
   };
 
+  const getStar = (mx, my) => {
+    const { stars, systems: sysList } = stRef.current;
+    if (!stars || !sysList) return null;
+    const STAR_R = 36;
+    for (let i = 0; i < sysList.length; i++) {
+      const star = stars[i]; if (!star) continue;
+      const dx = star.x - mx, dy = star.y - my;
+      if (Math.sqrt(dx*dx+dy*dy) < STAR_R) return sysList[i];
+    }
+    return null;
+  };
+
   const getNode = e => {
     const canvas=canvasRef.current; if(!canvas) return null;
     const rect=canvas.getBoundingClientRect();
@@ -2047,7 +2070,8 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setTab, on
       const rect=canvas&&canvas.getBoundingClientRect();
       const {x:mx,y:my}=toWorld(rect?e.clientX-rect.left:0, rect?e.clientY-rect.top:0);
       const sat=getSatellite(mx,my);
-      dragStart.current={id:null, x:e.clientX, y:e.clientY, sat};
+      const star=!sat?getStar(mx,my):null;
+      dragStart.current={id:null, x:e.clientX, y:e.clientY, sat, star};
       e.preventDefault();
     }
   };
@@ -2061,7 +2085,8 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setTab, on
     }
     const hovP=stRef.current.nodes.find(n=>{ const dx=n.x-mx,dy=n.y-my; return Math.sqrt(dx*dx+dy*dy)<56; });
     const hovS=!hovP && getSatellite(mx,my);
-    canvas.style.cursor=(hovP||hovS)?'pointer':'default';
+    const hovStar=!hovP && !hovS && getStar(mx,my);
+    canvas.style.cursor=(hovP||hovS||hovStar)?'pointer':'default';
   };
   const onMU = e => {
     const start=dragStart.current;
@@ -2074,6 +2099,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setTab, on
         const blk=allBlocks.find(b=>b.id===start.id);
         if(blk){ setSelBlock(blk.id); setTab('blocks'); return; }
       }
+      if(start.star){ setSelSystem(start.star.id); setTab('blocks'); return; }
       if(start.sat){ onQuestClick(start.sat.quest, start.sat.systemId, start.sat.blockId, start.sat.isActive); }
     }
   };
