@@ -1136,8 +1136,8 @@ function QuestGraph({ quests, isActive, onQuestClick, onAddQuest }) {
 function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQuestClick }) {
   const canvasRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const stRef = React.useRef({ nodes:[], blocks, activeId:activeBlock?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:180000, spring:0.45 });
-  const [sliders, setSliders] = React.useState({ repulsion:180000, spring:0.45 });
+  const stRef = React.useRef({ nodes:[], blocks, activeId:activeBlock?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:600000, spring:0.45, zoom:1 });
+  const [sliders, setSliders] = React.useState({ repulsion:600000, spring:0.45 });
   const dragStart = React.useRef(null);
 
   React.useEffect(() => {
@@ -1149,7 +1149,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
     stRef.current.nodes = blocks.map((b,i) => {
       if (existing.has(b.id)) return existing.get(b.id);
       const angle = (i/Math.max(blocks.length,1))*Math.PI*2;
-      return { id:b.id, x:w/2+Math.cos(angle)*180, y:h/2+Math.sin(angle)*180, vx:0, vy:0 };
+      return { id:b.id, x:w/2+Math.cos(angle)*350, y:h/2+Math.sin(angle)*350, vx:0, vy:0 };
     });
   }, [blocks, activeBlock && activeBlock.id]);
 
@@ -1157,7 +1157,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
     const canvas = canvasRef.current, con = containerRef.current;
     if (!canvas||!con) return;
     const ctx = canvas.getContext('2d');
-    const R=52, ORBT=94, QR=11;
+    const R=52, ORBT=160, QR=11;
 
     const resize = () => {
       canvas.width = con.clientWidth;
@@ -1166,7 +1166,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
         const w=canvas.width, h=canvas.height;
         stRef.current.nodes = stRef.current.blocks.map((b,i) => {
           const angle=(i/Math.max(stRef.current.blocks.length,1))*Math.PI*2;
-          return { id:b.id, x:w/2+Math.cos(angle)*180, y:h/2+Math.sin(angle)*180, vx:0, vy:0 };
+          return { id:b.id, x:w/2+Math.cos(angle)*350, y:h/2+Math.sin(angle)*350, vx:0, vy:0 };
         });
       }
     };
@@ -1194,7 +1194,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
           const nb=nodes[i+di]; if(!nb) continue;
           const dx=nb.x-n.x, dy=nb.y-n.y;
           const d=Math.sqrt(dx*dx+dy*dy)||1;
-          const f=Math.max(-80,Math.min(80,(d-250)*stRef.current.spring));
+          const f=Math.max(-80,Math.min(80,(d-500)*stRef.current.spring));
           fx+=dx/d*f; fy+=dy/d*f;
         }
         n.vx=(n.vx+fx)*0.75; n.vy=(n.vy+fy)*0.75;
@@ -1214,6 +1214,10 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
       }
 
       ctx.clearRect(0,0,w,h);
+      ctx.save();
+      ctx.translate(w/2, h/2);
+      ctx.scale(st.zoom, st.zoom);
+      ctx.translate(-w/2, -h/2);
 
       // Edges
       for (let i=1; i<nodes.length; i++) {
@@ -1302,15 +1306,29 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
         }
       }
 
+      ctx.restore();
       st.animId=requestAnimationFrame(tick);
     };
     stRef.current.animId=requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(stRef.current.animId); window.removeEventListener('resize',resize); };
+
+    const onWheel = e => {
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      stRef.current.zoom = Math.max(0.25, Math.min(4, stRef.current.zoom * factor));
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+
+    return () => { cancelAnimationFrame(stRef.current.animId); window.removeEventListener('resize',resize); canvas.removeEventListener('wheel',onWheel); };
   }, []);
 
+  const toWorld = (mx, my) => {
+    const canvas=canvasRef.current; if(!canvas) return {x:mx,y:my};
+    const w=canvas.width, h=canvas.height, z=stRef.current.zoom;
+    return { x:(mx-w/2)/z+w/2, y:(my-h/2)/z+h/2 };
+  };
   const getSatellite = (mx, my) => {
     const { nodes, blocks, orbitAngles } = stRef.current;
-    const ORBT=94, QR=15;
+    const ORBT=160, QR=15;
     for (let i=0; i<nodes.length; i++) {
       const n=nodes[i], blk=blocks[i]; if(!blk) continue;
       const angles=orbitAngles[n.id]||[];
@@ -1327,7 +1345,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
   const getNode = e => {
     const canvas=canvasRef.current; if(!canvas) return null;
     const rect=canvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const {x:mx,y:my}=toWorld(e.clientX-rect.left, e.clientY-rect.top);
     return stRef.current.nodes.find(n=>{ const dx=n.x-mx,dy=n.y-my; return Math.sqrt(dx*dx+dy*dy)<56; });
   };
   const onMD = e => {
@@ -1339,7 +1357,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
     } else {
       const canvas=canvasRef.current;
       const rect=canvas&&canvas.getBoundingClientRect();
-      const mx=rect?e.clientX-rect.left:0, my=rect?e.clientY-rect.top:0;
+      const {x:mx,y:my}=toWorld(rect?e.clientX-rect.left:0, rect?e.clientY-rect.top:0);
       const sat=getSatellite(mx,my);
       dragStart.current={id:null, x:e.clientX, y:e.clientY, sat};
       e.preventDefault();
@@ -1348,7 +1366,7 @@ function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQue
   const onMM = e => {
     const canvas=canvasRef.current; if(!canvas) return;
     const rect=canvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const {x:mx,y:my}=toWorld(e.clientX-rect.left, e.clientY-rect.top);
     if(stRef.current.dragging){
       const n=stRef.current.nodes.find(n=>n.id===stRef.current.dragging);
       if(n){ n.x=mx; n.y=my; dragStart.current=null; }
