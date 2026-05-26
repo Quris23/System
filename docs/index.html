@@ -1925,7 +1925,10 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       if(stRef.current.stars.length!==N){
         const init=[];
         if(N===1){init.push({x:w/2,y:h/2});}
-        else{for(let i=0;i<N;i++){const a=(i/N)*Math.PI*2-Math.PI/2,r=Math.min(w,h)*0.28;init.push({x:w/2+Math.cos(a)*r,y:h/2+Math.sin(a)*r});}}
+        else{for(let i=0;i<N;i++){
+          // Random positions across canvas (no circle — physics takes over)
+          init.push({x:w*0.15+Math.random()*w*0.7, y:h*0.15+Math.random()*h*0.7});
+        }}
         stRef.current.stars=init;
         stRef.current.starVels=init.map(()=>({vx:0,vy:0}));
       }
@@ -1949,7 +1952,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
       const allBlocks=(systems||[]).flatMap(s=>s.blocks.map(b=>({...b,systemId:s.id})));
 
       // ── Star physics: FDG — repulsion everywhere, spring only between neighbors ──
-      const IDEAL=320, SPRING_K=0.004, REP_K=120000, DAMP=0.85;
+      const IDEAL=300, SPRING_K=0.003, REP_K=400000, DAMP=0.82;
       const N=systems.length;
       const isNeighbor=(i,j)=>Math.abs(i-j)===1;
       const dragIdx=st.draggingStarIdx;
@@ -1966,7 +1969,7 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
           // spring attraction only between chain neighbors
           if(isNeighbor(i,j)&&d>IDEAL){const s=(d-IDEAL)*SPRING_K; fx-=dx/d*s; fy-=dy/d*s;}
         }
-        fx+=(w/2-stars[i].x)*0.001; fy+=(h/2-stars[i].y)*0.001;
+        fx+=(w/2-stars[i].x)*0.0004; fy+=(h/2-stars[i].y)*0.0004;
         starVels[i].vx=(starVels[i].vx+fx)*DAMP; starVels[i].vy=(starVels[i].vy+fy)*DAMP;
         stars[i]={x:stars[i].x+starVels[i].vx, y:stars[i].y+starVels[i].vy};
       }
