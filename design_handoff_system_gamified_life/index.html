@@ -926,12 +926,10 @@ function QuestModal({ qd, onComplete, onDelete, onEdit, onClose }) {
           <div style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px'}}>+{quest.reward} ✦</div>
         </div>
         {/* Buttons */}
-        {!quest.done && (
-          <div style={{display:'flex',gap:'10px',padding:'0 28px 22px',justifyContent:'center'}}>
-            <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',borderColor:'var(--red)',color:'var(--red)'}} onClick={onDelete}>УДАЛИТЬ</button>
-            {isActive && <button className="btn btn-gld" style={{flex:1,justifyContent:'center'}} onClick={onComplete}>✓ ВЫПОЛНИТЬ</button>}
-          </div>
-        )}
+        <div style={{display:'flex',gap:'10px',padding:'0 28px 22px',justifyContent:'center'}}>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',borderColor:'var(--red)',color:'var(--red)'}} onClick={onDelete}>УДАЛИТЬ</button>
+          {!quest.done && isActive && <button className="btn btn-gld" style={{flex:1,justifyContent:'center'}} onClick={onComplete}>✓ ВЫПОЛНИТЬ</button>}
+        </div>
       </div>
     </div>
   );
@@ -974,20 +972,23 @@ function DailyQuestModal({ quest, onComplete, onClose }) {
 
 function DailyView({ quests, onComplete, onAdd, onDelete }) {
   const [dqModal, setDqModal] = useState(null);
-  const done = quests.filter(q=>q.done).length;
+  const [showDone, setShowDone] = useState(false);
+  const active = quests.filter(q=>!q.done);
+  const done = quests.filter(q=>q.done);
   return (
     <div className="dv-layout" style={{alignItems:'center'}}>
       {dqModal && (
         <DailyQuestModal
           quest={dqModal}
           onComplete={()=>{ onComplete(dqModal.id); setDqModal(null); }}
+          onDelete={()=>{ onDelete(dqModal.id); setDqModal(null); }}
           onClose={()=>setDqModal(null)}
         />
       )}
       <div className="view-hdr" style={{width:'100%',maxWidth:'560px'}}>
         <div>
           <div className="view-title">Ежедневные Квесты</div>
-          <div className="view-sub">{done} / {quests.length} выполнено · сброс в полночь</div>
+          <div className="view-sub">{done.length} / {quests.length} выполнено · сброс в полночь</div>
         </div>
         <button className="btn btn-pur" onClick={onAdd}>+ Квест</button>
       </div>
@@ -1000,21 +1001,46 @@ function DailyView({ quests, onComplete, onAdd, onDelete }) {
         </div>
       )}
 
-      {quests.filter(q=>!q.done).map(q => (
-        <div key={q.id} className={`dq-card${q.done?' dq-done':''}`}
+      {active.map(q => (
+        <div key={q.id} className="dq-card"
           style={{width:'100%',maxWidth:'560px',cursor:'pointer'}}
           onClick={()=>setDqModal(q)}>
-          <div className={`dq-check${q.done?' done':''}`} style={{pointerEvents:'none'}}>
-            {q.done ? '✓' : ''}
-          </div>
+          <div className="dq-check" style={{pointerEvents:'none'}} />
           <div className="dq-info" style={{flex:1}}>
-            <div className="dq-name" style={q.done?{textDecoration:'line-through',opacity:.6}:{}}>{q.title}</div>
+            <div className="dq-name">{q.title}</div>
             {q.description && <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'2px'}}>{q.description}</div>}
             <div className="dq-rew">+{q.reward} ✦</div>
           </div>
           <button className="ic-btn" onClick={e=>{e.stopPropagation();onDelete(q.id);}}>✕</button>
         </div>
       ))}
+
+      {done.length > 0 && (
+        <div style={{width:'100%',maxWidth:'560px'}}>
+          <button onClick={()=>setShowDone(v=>!v)} style={{
+            background:'none',border:'none',cursor:'pointer',
+            display:'flex',alignItems:'center',gap:'8px',
+            color:'var(--mut2)',fontFamily:'var(--hud)',
+            fontSize:'9px',letterSpacing:'3px',textTransform:'uppercase',
+            padding:'4px 0',width:'100%',
+          }}>
+            <span style={{flex:1,height:'1px',background:'var(--bd)'}} />
+            {showDone ? '▲' : '▼'} ВЫПОЛНЕНО ({done.length})
+            <span style={{flex:1,height:'1px',background:'var(--bd)'}} />
+          </button>
+          {showDone && done.map(q => (
+            <div key={q.id} className="dq-card dq-done" style={{width:'100%',marginTop:'8px'}}>
+              <div className="dq-check done" style={{pointerEvents:'none'}}>✓</div>
+              <div className="dq-info" style={{flex:1}}>
+                <div className="dq-name" style={{textDecoration:'line-through',opacity:.6}}>{q.title}</div>
+                {q.description && <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'2px'}}>{q.description}</div>}
+                <div className="dq-rew">+{q.reward} ✦</div>
+              </div>
+              <button className="ic-btn" onClick={()=>onDelete(q.id)} title="Удалить">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
