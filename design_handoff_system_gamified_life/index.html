@@ -649,9 +649,13 @@ function App({ session }) {
     SFX.buy();
     setSt(p => {
       const r = p.rewards.find(r=>r.id===id);
-      if (!r || r.bought || p.player.gold < r.cost) return p;
+      if (!r || p.player.gold < r.cost) return p;
+      if (!r.repeatable && r.bought) return p;
       setTimeout(() => toast(`🏆  Получено: ${r.title}`, 'lvl'), 0);
-      return {...p, player:{...p.player, gold:p.player.gold-r.cost}, rewards:p.rewards.map(r=>r.id===id?{...r,bought:true}:r)};
+      return {...p,
+        player:{...p.player, gold:p.player.gold - r.cost},
+        rewards:p.rewards.map(rw => rw.id===id ? {...rw, bought:true, count:(rw.count||0)+1} : rw),
+      };
     });
   }, [toast]);
 
@@ -676,7 +680,7 @@ function App({ session }) {
         })
       })}));
     } else if (type === 'addReward') {
-      setSt(p => ({ ...p, rewards:[...p.rewards, {id:uid(), title:data.title, description:data.description||'', cost:parseInt(data.cost)||100, bought:false}] }));
+      setSt(p => ({ ...p, rewards:[...p.rewards, {id:uid(), title:data.title, description:data.description||'', cost:parseInt(data.cost)||100, bought:false, repeatable:!!data.repeatable, count:0}] }));
     } else if (type === 'editPlayer') {
       setSt(p => ({ ...p, player:{...p.player, name:data.name||p.player.name} }));
     }
@@ -1067,22 +1071,33 @@ function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onToast }) {
 
       <div className="rwd-grid">
         {rewards.map(r => {
-          const canBuy = !r.bought && gold >= r.cost;
-          const poor = !r.bought && gold < r.cost;
+          const poor = gold < r.cost;
+          const canBuy = !poor && (r.repeatable || !r.bought);
+          const oneTimeBought = !r.repeatable && r.bought;
           return (
-            <div key={r.id} className={`rwd-card${r.bought?' bought':''}${poor?' poor':''}`}>
-              <div className="rwd-title">{r.title}</div>
+            <div key={r.id} className={`rwd-card${oneTimeBought?' bought':''}${!r.repeatable&&poor&&!r.bought?' poor':''}`}>
+              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'8px'}}>
+                <div className="rwd-title">{r.title}</div>
+                {r.repeatable && (r.count||0) > 0 && (
+                  <span style={{fontFamily:'var(--hud)',fontSize:'11px',fontWeight:700,color:'var(--gld)',background:'var(--gld2)',border:'1px solid rgba(148,234,255,.3)',borderRadius:'3px',padding:'2px 8px',whiteSpace:'nowrap',flexShrink:0}}>× {r.count}</span>
+                )}
+              </div>
               {r.description && <div className="rwd-desc">{r.description}</div>}
-              <div className={`rwd-cost${poor?' poor':''}`}><span>✦</span>{r.cost}</div>
-              {r.bought ? (
-                <div className="rwd-bought-tag">✅ ПОЛУЧЕНО</div>
+              <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                <span style={{fontFamily:'var(--hud)',fontSize:'17px',fontWeight:700,color:poor&&!oneTimeBought?'var(--mut)':'var(--gld)'}}>✦ {r.cost}</span>
+                {r.repeatable && <span style={{fontSize:'9px',color:'var(--pur)',fontFamily:'var(--hud)',letterSpacing:'1px',background:'var(--pur2)',border:'1px solid var(--pur)',borderRadius:'2px',padding:'1px 6px'}}>МНОГОРАЗ.</span>}
+              </div>
+              {oneTimeBought ? (
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <div className="rwd-bought-tag">✅ ПОЛУЧЕНО</div>
+                  <button className="ic-btn" title="Удалить" onClick={()=>onDelete(r.id)}>✕</button>
+                </div>
               ) : (
                 <div className="rwd-btns">
-                <button
-                    className="btn btn-gld"
-                    style={{flex:1,padding:'8px'}}
-                    onClick={()=>{ if(canBuy) onBuy(r.id); else onToast('Недостаточно очков ✦'); }}
-                  >Купить</button>
+                  <button className="btn btn-gld" style={{flex:1,padding:'8px',opacity:poor?0.45:1}}
+                    onClick={()=>{ if(canBuy) onBuy(r.id); else onToast('Недостаточно очков ✦'); }}>
+                    {r.repeatable && (r.count||0)>0 ? `Ещё раз` : 'Купить'}
+                  </button>
                   <button className="ic-btn" title="Удалить" onClick={()=>onDelete(r.id)}>✕</button>
                 </div>
               )}
@@ -1126,6 +1141,7 @@ const FORMS = {
       {k:'title',       label:'Название',        type:'text', req:true},
       {k:'description', label:'Описание',         type:'textarea'},
       {k:'cost',        label:'Стоимость (✦)',    type:'number', ph:'100'},
+      {k:'repeatable',  label:'Тип',             type:'checkbox', checkLabel:'Многоразовая (можно купить несколько раз)'},
     ]
   },
   editQuest: { title:'Редактировать задание', fields:[
@@ -1162,6 +1178,12 @@ function FormModal({ modal, onClose, onSubmit }) {
             <label className="flbl">{f.label}</label>
             {f.type==='textarea' ? (
               <textarea className="fta" value={form[f.k]||''} onChange={e=>set(f.k,e.target.value)} />
+            ) : f.type==='checkbox' ? (
+              <label style={{display:'flex',alignItems:'center',gap:'10px',cursor:'pointer',padding:'6px 0'}}>
+                <input type="checkbox" checked={!!form[f.k]} onChange={e=>set(f.k,e.target.checked)}
+                  style={{width:'17px',height:'17px',accentColor:'var(--pur)',cursor:'pointer'}} />
+                <span style={{fontSize:'13px',color:'var(--txt)',fontWeight:600}}>{f.checkLabel||''}</span>
+              </label>
             ) : (
               <input
                 className="fi" type={f.type}
