@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYSTEM</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#04080f;--s1:#080f1c;--s2:#0d1526;--s3:#111d33;
+  --bd:#1a2d4a;--bd2:#234070;
+  --pur:#0fa8f5;--pur2:rgba(15,168,245,.18);--pur3:rgba(15,168,245,.06);
+  --blu:#38d5f8;
+  --gld:#94eaff;--gld2:rgba(148,234,255,.14);--gld3:rgba(148,234,255,.06);
+  --grn:#10b981;--grn2:rgba(16,185,129,.14);
+  --red:#ef4444;--red2:rgba(239,68,68,.14);
+  --txt:#e2e8f0;--mut:#5a6478;--mut2:#8892a4;
+  --hud:'Orbitron',sans-serif;--body:'Rajdhani',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{
+  background:var(--bg);color:var(--txt);
+  font-family:var(--body);font-size:16px;font-weight:500;
+  background-image:
+    linear-gradient(rgba(15,168,245,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(15,168,245,.03) 1px,transparent 1px);
+  background-size:52px 52px;
+}
+#app{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── HEADER ── */
+#hdr{
+  flex-shrink:0;height:60px;
+  display:flex;align-items:center;gap:16px;padding:0 24px;
+  background:rgba(13,13,32,.95);
+  border-bottom:1px solid var(--bd);
+  backdrop-filter:blur(12px);
+  position:relative;z-index:10;
+}
+#logo{
+  font-family:var(--hud);font-size:17px;font-weight:900;
+  color:var(--pur);letter-spacing:4px;white-space:nowrap;
+  text-shadow:0 0 24px rgba(15,168,245,.7);
+  user-select:none;
+}
+.hdr-div{width:1px;height:30px;background:var(--bd);flex-shrink:0}
+#player-btn{
+  display:flex;align-items:center;gap:10px;
+  cursor:pointer;padding:5px 8px;border-radius:5px;
+  border:1px solid transparent;transition:all .2s;background:none;color:var(--txt);
+}
+#player-btn:hover{background:var(--s2);border-color:var(--bd)}
+#pname{font-family:var(--hud);font-size:12px;font-weight:700;letter-spacing:1px}
+#lvl-badge{
+  background:var(--pur2);border:1px solid var(--pur);
+  color:var(--pur);font-family:var(--hud);
+  font-size:9px;font-weight:700;padding:2px 8px;
+  border-radius:2px;letter-spacing:1.5px;white-space:nowrap;
+}
+#xp-wrap{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
+#xp-lbl{font-family:var(--hud);font-size:9px;color:var(--mut2);letter-spacing:2px;flex-shrink:0}
+#xp-track{flex:1;height:5px;background:var(--s3);border-radius:3px;overflow:hidden;min-width:0}
+#xp-fill{height:100%;background:linear-gradient(90deg,var(--pur),var(--blu));border-radius:3px;transition:width .7s ease;box-shadow:0 0 10px rgba(15,168,245,.5)}
+#xp-num{font-family:var(--hud);font-size:9px;color:var(--mut2);white-space:nowrap;flex-shrink:0}
+#gold-display{
+  display:flex;align-items:center;gap:7px;
+  background:var(--gld2);border:1px solid rgba(148,234,255,.3);
+  border-radius:5px;padding:6px 14px;flex-shrink:0;
+}
+#gold-icon{color:var(--gld);font-size:13px}
+#gold-num{font-family:var(--hud);font-size:16px;font-weight:700;color:var(--gld)}
+
+/* ── NAV ── */
+#nav{
+  flex-shrink:0;height:44px;
+  display:flex;align-items:stretch;
+  background:rgba(13,13,32,.9);
+  border-bottom:1px solid var(--bd);
+  padding:0 20px;gap:2px;
+  position:relative;z-index:9;
+}
+.tab{
+  display:flex;align-items:center;gap:8px;
+  padding:0 18px;background:none;border:none;
+  border-bottom:2px solid transparent;
+  color:var(--mut2);font-family:var(--body);
+  font-size:13px;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;
+  cursor:pointer;transition:all .2s;
+}
+.tab:hover{color:var(--txt)}
+.tab.on{color:var(--pur);border-bottom-color:var(--pur)}
+.tab-ic{font-size:15px}
+
+/* ── MAIN ── */
+#main{flex:1;overflow:hidden;min-height:0}
+
+/* ── BUTTONS ── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 18px;border-radius:4px;
+  font-family:var(--body);font-size:13px;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;
+  cursor:pointer;transition:all .2s;border:1px solid;outline:none;
+}
+.btn-pur{background:var(--pur2);border-color:var(--pur);color:var(--txt)}
+.btn-pur:hover{background:var(--pur);box-shadow:0 0 18px rgba(15,168,245,.45)}
+.btn-gld{background:var(--gld2);border-color:var(--gld);color:var(--gld)}
+.btn-gld:hover{background:var(--gld);color:#000;box-shadow:0 0 18px rgba(245,158,11,.45)}
+.btn-red{background:var(--red2);border-color:var(--red);color:var(--red)}
+.btn-red:hover{background:var(--red);color:#fff}
+.btn-ghost{background:transparent;border-color:var(--bd2);color:var(--mut2)}
+.btn-ghost:hover{background:var(--s2);color:var(--txt)}
+.btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+.ic-btn{
+  background:transparent;border:none;color:var(--mut);
+  cursor:pointer;padding:4px 6px;border-radius:3px;
+  font-size:13px;transition:all .15s;
+}
+.ic-btn:hover{color:var(--red);background:var(--red2)}
+.ic-btn.add{color:var(--pur)}
+.ic-btn.add:hover{color:var(--pur);background:var(--pur2)}
+
+/* ── TOASTS ── */
+#toasts{
+  position:fixed;top:72px;right:20px;
+  z-index:999;display:flex;flex-direction:column;gap:8px;
+  pointer-events:none;
+}
+.toast{
+  background:var(--s2);border:1px solid var(--grn);
+  border-radius:6px;padding:11px 18px;
+  font-weight:700;letter-spacing:1px;
+  color:var(--grn);font-size:13px;font-family:var(--body);
+  animation:tSlide .3s ease;
+}
+.toast.lvl{border-color:var(--gld);color:var(--gld)}
+@keyframes tSlide{
+  from{transform:translateX(110%);opacity:0}
+  to{transform:translateX(0);opacity:1}
+}
+
+/* ── MODAL ── */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.78);
+  display:flex;align-items:center;justify-content:center;
+  z-index:500;
+}
+.modal{
+  background:var(--s1);border:1px solid var(--bd2);
+  border-radius:10px;padding:32px;width:460px;
+  max-width:90vw;max-height:90vh;overflow-y:auto;
+  box-shadow:0 0 60px rgba(15,168,245,.15);
+}
+.modal-title{
+  font-family:var(--hud);font-size:13px;font-weight:700;
+  letter-spacing:2px;color:var(--pur);
+  text-transform:uppercase;margin-bottom:24px;
+}
+.fg{margin-bottom:16px}
+.flbl{
+  display:block;font-size:11px;font-weight:700;
+  letter-spacing:2px;color:var(--mut2);
+  text-transform:uppercase;margin-bottom:6px;
+}
+.fi,.fta{
+  width:100%;background:var(--s2);border:1px solid var(--bd);
+  border-radius:5px;color:var(--txt);font-family:var(--body);
+  font-size:15px;font-weight:500;padding:10px 14px;
+  outline:none;transition:border-color .2s;
+}
+.fi:focus,.fta:focus{border-color:var(--pur)}
+.fta{resize:vertical;min-height:80px}
+.modal-acts{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}
+
+/* ── BLOCKS VIEW ── */
+.bv-layout{display:grid;grid-template-columns:270px 1fr;height:100%;overflow:hidden}
+.bv-sidebar{
+  border-right:1px solid var(--bd);
+  overflow-y:auto;padding:16px;
+  display:flex;flex-direction:column;gap:8px;
+  background:rgba(13,13,32,.5);
+}
+.bv-sidebar-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding-bottom:12px;border-bottom:1px solid var(--bd);
+  margin-bottom:4px;
+}
+.sidebar-title{
+  font-family:var(--hud);font-size:9px;font-weight:700;
+  letter-spacing:3px;color:var(--mut2);text-transform:uppercase;
+}
+.blk-card{
+  background:var(--s1);border:1px solid var(--bd);
+  border-radius:7px;padding:12px 14px;
+  cursor:pointer;transition:all .2s;
+  display:flex;flex-direction:column;gap:8px;
+}
+.blk-card:hover:not(.blk-locked){border-color:var(--bd2)}
+.blk-card.blk-sel{border-color:var(--pur);background:var(--pur3)}
+.blk-card.blk-active{border-color:rgba(15,168,245,.35)}
+.blk-card.blk-done{opacity:.55}
+.blk-card.blk-locked{opacity:.45}
+.blk-hdr{display:flex;align-items:center;gap:10px}
+.blk-ic{font-size:14px;flex-shrink:0}
+.blk-name{font-weight:700;font-size:14px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk-prog-txt{font-size:11px;color:var(--mut2)}
+.blk-progbar{height:3px;background:var(--s3);border-radius:2px;overflow:hidden}
+.blk-progfill{height:100%;background:linear-gradient(90deg,var(--pur),var(--blu));border-radius:2px;transition:width .4s}
+
+/* ── BLOCK DETAIL ── */
+.bv-detail{overflow-y:auto;padding:28px 32px;display:flex;flex-direction:column;gap:28px}
+.bdet-hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.bdet-title{font-family:var(--hud);font-size:22px;font-weight:900;letter-spacing:1px;text-shadow:0 0 30px rgba(124,58,237,.25)}
+.bdet-desc{color:var(--mut2);font-size:15px;margin-top:8px;line-height:1.5}
+.bdet-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0}
+.status-tag{
+  font-family:var(--hud);font-size:9px;font-weight:700;
+  letter-spacing:2px;padding:4px 10px;border-radius:2px;
+  white-space:nowrap;text-transform:uppercase;
+}
+.st-active{background:var(--pur2);border:1px solid var(--pur);color:var(--pur)}
+.st-done{background:var(--grn2);border:1px solid var(--grn);color:var(--grn)}
+.st-locked{background:var(--s2);border:1px solid var(--bd);color:var(--mut2)}
+
+/* ── ROADMAP ── */
+.rm-section-title{
+  font-family:var(--hud);font-size:9px;letter-spacing:4px;
+  color:var(--mut2);text-transform:uppercase;
+  display:flex;align-items:center;gap:12px;
+}
+.rm-section-title::after{content:'';flex:1;height:1px;background:var(--bd)}
+.rm-scroll{overflow-x:auto;padding:20px 0 28px}
+.rm-row{display:flex;align-items:flex-start;min-width:max-content;padding:4px 0}
+.rm-step{display:flex;align-items:flex-start}
+.rm-conn{
+  width:64px;height:2px;margin-top:30px;
+  flex-shrink:0;border-radius:1px;
+  background:var(--bd);transition:background .4s;
+}
+.rm-conn.done{background:var(--grn);box-shadow:0 0 8px rgba(16,185,129,.35)}
+.rm-nwrap{display:flex;flex-direction:column;align-items:center;gap:14px;width:154px}
+.rm-node{
+  width:62px;height:62px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--hud);font-size:18px;font-weight:800;
+  border:2px solid;cursor:pointer;transition:all .2s;
+  flex-shrink:0;user-select:none;
+}
+.rm-node.done{background:var(--grn2);border-color:var(--grn);color:var(--grn)}
+.rm-node.avail{
+  background:var(--pur2);border-color:var(--pur);color:var(--pur);
+  animation:rmPulse 2.6s ease-in-out infinite;
+}
+.rm-node.avail:hover{transform:scale(1.08);box-shadow:0 0 24px rgba(15,168,245,.5)}
+.rm-node.done{background:var(--grn2);border-color:var(--grn);color:var(--grn)}
+.rm-node.locked{background:var(--s2);border-color:var(--bd);color:var(--mut);cursor:default}
+@keyframes rmPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(15,168,245,0)}
+  50%{box-shadow:0 0 0 9px rgba(15,168,245,.14)}
+}
+.rm-info{text-align:center;width:140px}
+.rm-info-title{font-size:13px;font-weight:700;line-height:1.35;margin-bottom:4px}
+.rm-info-dl{font-size:11px;margin-bottom:4px;font-weight:600}
+.rm-info-rew{font-size:12px;color:var(--gld);font-weight:700;font-family:var(--hud)}
+
+/* ── QUEST DETAIL ── */
+.qd-state{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--hud);font-size:9px;letter-spacing:2px;
+  padding:5px 12px;border-radius:3px;margin-bottom:16px;
+}
+.qd-state.done{background:var(--grn2);color:var(--grn);border:1px solid var(--grn)}
+.qd-state.avail{background:var(--gld2);color:var(--gld);border:1px solid var(--gld)}
+.qd-state.locked{background:var(--s2);color:var(--mut2);border:1px solid var(--bd)}
+.qd-title{font-size:20px;font-weight:700;margin-bottom:10px;line-height:1.3}
+.qd-desc{color:var(--mut2);font-size:15px;margin-bottom:16px;line-height:1.5}
+.qd-row{display:flex;gap:6px;align-items:center;margin-bottom:8px;font-size:14px}
+.qd-label{color:var(--mut2);font-weight:600}
+
+/* ── DAILY VIEW ── */
+.dv-layout{height:100%;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
+.view-hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.view-title{font-family:var(--hud);font-size:18px;font-weight:800;letter-spacing:2px}
+.view-sub{font-size:12px;color:var(--mut2);margin-top:4px;font-weight:600}
+.dq-card{
+  display:flex;align-items:center;gap:14px;
+  background:var(--s1);border:1px solid var(--bd);
+  border-radius:7px;padding:14px 16px;transition:all .2s;
+}
+.dq-card:hover:not(.dq-done){border-color:var(--bd2)}
+.dq-card.dq-done{opacity:.5;border-color:rgba(16,185,129,.2)}
+.dq-check{
+  width:30px;height:30px;border-radius:50%;
+  border:2px solid var(--gld);background:transparent;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:15px;flex-shrink:0;transition:all .2s;
+  outline:none;color:transparent;
+}
+.dq-check:hover:not(.done){background:var(--gld2)}
+.dq-check.done{background:var(--grn);border-color:var(--grn);color:#fff}
+.dq-info{flex:1;min-width:0}
+.dq-name{font-size:16px;font-weight:700}
+.dq-rew{font-size:12px;color:var(--gld);margin-top:2px;font-family:var(--hud)}
+
+/* ── SHOP VIEW ── */
+.sv-layout{height:100%;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.sv-bal{display:flex;align-items:center;gap:8px;font-family:var(--hud);font-size:20px;font-weight:700;color:var(--gld)}
+.rwd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.rwd-card{
+  background:var(--s1);border:1px solid var(--bd);
+  border-radius:8px;padding:20px;
+  display:flex;flex-direction:column;gap:10px;transition:all .2s;
+}
+.rwd-card:hover:not(.bought):not(.poor){border-color:rgba(245,158,11,.35)}
+.rwd-card.bought{opacity:.45;border-color:rgba(16,185,129,.25)}
+.rwd-card.poor{opacity:.7}
+.rwd-title{font-size:16px;font-weight:700}
+.rwd-desc{font-size:13px;color:var(--mut2);flex:1;line-height:1.5}
+.rwd-cost{font-family:var(--hud);font-size:17px;font-weight:700;color:var(--gld);display:flex;align-items:center;gap:5px}
+.rwd-cost.poor{color:var(--mut)}
+.rwd-bought-tag{font-size:12px;color:var(--grn);font-weight:700;font-family:var(--hud)}
+.rwd-btns{display:flex;gap:8px;align-items:center}
+
+/* ── EMPTY STATE ── */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:72px 20px;color:var(--mut);text-align:center}
+.empty-ic{font-size:44px;opacity:.18}
+.empty-txt{font-size:14px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut2)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:10px}
+::-webkit-scrollbar-thumb:hover{background:var(--pur2)}
+
+/* ── GLOW TEXT ── */
+#logo{text-shadow:0 0 14px rgba(15,168,245,0.95),0 0 30px rgba(15,168,245,0.5)}
+.view-title{text-shadow:0 0 10px rgba(15,168,245,0.8),0 0 22px rgba(15,168,245,0.4)}
+.bdet-title{text-shadow:0 0 14px rgba(15,168,245,0.7),0 0 28px rgba(15,168,245,0.3)}
+.modal-title{text-shadow:0 0 12px rgba(15,168,245,0.9),0 0 24px rgba(15,168,245,0.4)}
+.sidebar-title{text-shadow:0 0 8px rgba(15,168,245,0.6)}
+#lvl-badge{text-shadow:0 0 8px rgba(15,168,245,0.8)}
+#pname{text-shadow:0 0 8px rgba(255,255,255,0.3)}
+#gold-num{text-shadow:0 0 10px rgba(148,234,255,0.8)}
+
+/* ── CORNER BRACKETS on cards ── */
+.blk-card,.dq-card,.rwd-card{position:relative}
+.blk-card::before,.dq-card::before,.rwd-card::before{
+  content:'';position:absolute;top:-1px;left:-1px;
+  width:10px;height:10px;pointer-events:none;
+  border-top:1.5px solid rgba(15,168,245,0.7);
+  border-left:1.5px solid rgba(15,168,245,0.7);
+}
+.blk-card::after,.dq-card::after,.rwd-card::after{
+  content:'';position:absolute;bottom:-1px;right:-1px;
+  width:10px;height:10px;pointer-events:none;
+  border-bottom:1.5px solid rgba(15,168,245,0.7);
+  border-right:1.5px solid rgba(15,168,245,0.7);
+}
+
+/* ── MODAL — NOTIFICATION STYLE ── */
+.modal{
+  border:1px solid rgba(15,168,245,0.8);
+  box-shadow:0 0 40px rgba(15,168,245,0.3),0 0 80px rgba(15,168,245,0.12),inset 0 0 24px rgba(15,168,245,0.04);
+  position:relative;overflow:hidden;
+}
+.modal::before,.modal::after{
+  content:'';position:absolute;width:14px;height:14px;pointer-events:none;
+}
+.modal::before{top:-1px;left:-1px;border-top:2px solid var(--pur);border-left:2px solid var(--pur)}
+.modal::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--pur);border-right:2px solid var(--pur)}
+.modal-title{
+  background:linear-gradient(90deg,rgba(15,168,245,0.18),rgba(15,168,245,0.05));
+  border-bottom:1px solid rgba(15,168,245,0.3);
+  margin:-32px -32px 24px -32px;padding:14px 32px;
+  letter-spacing:4px;
+}
+
+/* ── HEADER ── */
+#hdr{box-shadow:0 1px 24px rgba(15,168,245,0.12)}
+#nav{box-shadow:0 1px 12px rgba(15,168,245,0.08)}
+
+/* ── CARD GLOWS ── */
+.blk-card.blk-active{box-shadow:0 0 20px rgba(15,168,245,0.18)}
+.blk-card.blk-sel{box-shadow:0 0 24px rgba(15,168,245,0.25)}
+.dq-card{transition:all .2s}
+.dq-card.dq-expanded{
+  border-color:rgba(15,168,245,0.6);
+  box-shadow:0 0 22px rgba(15,168,245,0.22);
+}
+
+/* ── DAILY EXPAND PANEL ── */
+.dq-expand{
+  width:100%;margin-top:14px;padding-top:14px;
+  border-top:1px solid rgba(15,168,245,0.2);
+  display:flex;flex-direction:column;gap:10px;
+}
+.dq-expand-desc{
+  font-size:14px;color:var(--mut2);line-height:1.5;
+  padding:8px 12px;
+  background:rgba(15,168,245,0.05);
+  border:1px solid rgba(15,168,245,0.1);
+  border-radius:4px;
+}
+.dq-expand-btns{display:flex;gap:10px}
+
+/* ── XP BAR GLOW ── */
+#xp-fill{box-shadow:0 0 12px rgba(15,168,245,0.7),0 0 4px rgba(15,168,245,1)}
+
+/* ── TAB active glow ── */
+.tab.on{text-shadow:0 0 10px rgba(15,168,245,0.7)}
+
+/* ── Scan-line overlay ── */
+body::after{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.04) 2px,rgba(0,0,0,0.04) 4px);
+  pointer-events:none;z-index:0;
+}
+
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ── Supabase ──
+const SUPABASE_URL = 'https://hebhndizvzqxlxuepedm.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_vEVMNlouyMkQ3IG0YfBOWw_bnVDtf3_';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── Helpers ──
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const todayStr = () => new Date().toISOString().slice(0,10);
+
+const getLvl = xp => Math.floor(Math.sqrt(xp / 10)) + 1;
+const xpForLvl = l => (l-1)*(l-1)*10;
+const xpForNext = l => l*l*10;
+
+const fmtDl = dl => {
+  if (!dl) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const d = new Date(dl); d.setHours(0,0,0,0);
+  const diff = Math.round((d - now) / 86400000);
+  if (diff < 0) return { text:`Просрочено на ${Math.abs(diff)} дн.`, color:'var(--red)' };
+  if (diff === 0) return { text:'Сегодня!', color:'var(--gld)' };
+  if (diff === 1) return { text:'Завтра', color:'var(--gld)' };
+  return { text:`${diff} дн.`, color:'var(--mut2)' };
+};
+
+// ── Default state ──
+const DEF = {
+  player: { name:'ИГРОК', xp:0, gold:0 },
+  blocks: [],
+  daily: [],
+  rewards: [],
+  lastReset: todayStr(),
+};
+
+// ── App ──
+function App({ session }) {
+  const [st, setSt] = useState(DEF);
+  const [loaded, setLoaded] = useState(false);
+  const [tab, setTab] = useState('blocks');
+  const [modal, setModal] = useState(null);
+  const [questDetail, setQuestDetail] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [selBlock, setSelBlock] = useState(null);
+
+  useEffect(() => {
+    sb.from('user_state').select('state').eq('user_id', session.user.id).single()
+      .then(({ data }) => {
+        if (data?.state) {
+          const s = data.state;
+          setSt({ ...DEF, ...s });
+          const active = (s.blocks || []).find(b => !b.completed);
+          if (active) setSelBlock(active.id);
+        }
+        setLoaded(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => {
+      sb.from('user_state').upsert({ user_id: session.user.id, state: st, updated_at: new Date().toISOString() });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [st, loaded]);
+
+  // Daily reset
+  useEffect(() => {
+    const t = todayStr();
+    if (st.lastReset !== t) {
+      setSt(p => ({ ...p, lastReset:t, daily:p.daily.map(q=>({...q,done:false})) }));
+    }
+  }, []);
+
+  // Toast
+  const toast = useCallback((msg, type='ok') => {
+    const id = uid();
+    setToasts(p => [...p, {id,msg,type}]);
+    setTimeout(() => setToasts(p => p.filter(t=>t.id!==id)), 3000);
+  }, []);
+
+  // ── earn gold+xp ──
+  const earn = (prev, amount) => {
+    const newXp = prev.player.xp + amount;
+    const newGold = prev.player.gold + amount;
+    const wasLvl = getLvl(prev.player.xp);
+    const newLvl = getLvl(newXp);
+    if (newLvl > wasLvl) setTimeout(() => toast(`⚡ LEVEL UP!  Уровень ${newLvl}`, 'lvl'), 300);
+    return { ...prev.player, xp:newXp, gold:newGold };
+  };
+
+  // ── Complete quest ──
+  const completeQuest = useCallback((blockId, questId) => {
+    setSt(p => {
+      const blk = p.blocks.find(b=>b.id===blockId);
+      if (!blk || blk.completed) return p;
+      const q = blk.quests.find(q=>q.id===questId);
+      if (!q || q.done) return p;
+      const rew = q.reward || 25;
+      setTimeout(() => toast(`+${rew} ✦  Задание выполнено!`), 0);
+      const newBlocks = p.blocks.map(b => {
+        if (b.id !== blockId) return b;
+        const nq = b.quests.map(q2 => q2.id===questId ? {...q2,done:true} : q2);
+        const allDone = nq.every(q2=>q2.done);
+        if (allDone) setTimeout(() => toast(`🏆  Блок «${b.title}» пройден!`, 'lvl'), 600);
+        return {...b, quests:nq, completed:allDone};
+      });
+      return {...p, player:earn(p, rew), blocks:newBlocks};
+    });
+  }, [toast]);
+
+  // ── Complete daily ──
+  const completeDaily = useCallback(id => {
+    setSt(p => {
+      const q = p.daily.find(d=>d.id===id);
+      if (!q || q.done) return p;
+      setTimeout(() => toast(`+${q.reward} ✦  Ежедневный квест!`), 0);
+      return {...p, player:earn(p, q.reward), daily:p.daily.map(d=>d.id===id?{...d,done:true}:d)};
+    });
+  }, [toast]);
+
+  // ── Buy reward ──
+  const buyReward = useCallback(id => {
+    setSt(p => {
+      const r = p.rewards.find(r=>r.id===id);
+      if (!r || r.bought || p.player.gold < r.cost) return p;
+      setTimeout(() => toast(`🏆  Получено: ${r.title}`, 'lvl'), 0);
+      return {...p, player:{...p.player, gold:p.player.gold-r.cost}, rewards:p.rewards.map(r=>r.id===id?{...r,bought:true}:r)};
+    });
+  }, [toast]);
+
+  // ── Modal submit ──
+  const submit = useCallback(data => {
+    if (!modal) return;
+    const { type } = modal;
+    if (type === 'addBlock') {
+      const nb = { id:uid(), title:data.title, description:data.description||'', completed:false, quests:[] };
+      setSt(p => ({ ...p, blocks:[...p.blocks, nb] }));
+      setSelBlock(nb.id);
+    } else if (type === 'addQuest') {
+      setSt(p => ({ ...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
+        ...b, quests:[...b.quests, {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||25, done:false}]
+      })}));
+    } else if (type === 'addDaily') {
+      setSt(p => ({ ...p, daily:[...p.daily, {id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||10, done:false}] }));
+    } else if (type === 'editQuest') {
+      setSt(p => ({ ...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
+        ...b, quests:b.quests.map(q => q.id!==modal.questId ? q : {
+          ...q, title:data.title||q.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||q.reward
+        })
+      })}));
+    } else if (type === 'addReward') {
+      setSt(p => ({ ...p, rewards:[...p.rewards, {id:uid(), title:data.title, description:data.description||'', cost:parseInt(data.cost)||100, bought:false}] }));
+    } else if (type === 'editPlayer') {
+      setSt(p => ({ ...p, player:{...p.player, name:data.name||p.player.name} }));
+    }
+    setModal(null);
+  }, [modal]);
+
+  // ── Deletes ──
+  const delBlock = id => { setSt(p=>({...p,blocks:p.blocks.filter(b=>b.id!==id)})); if(selBlock===id) setSelBlock(null); };
+  const delQuest = (bid,qid) => setSt(p=>({...p,blocks:p.blocks.map(b=>b.id!==bid?b:{...b,quests:b.quests.filter(q=>q.id!==qid)})}));
+  const delDaily = id => setSt(p=>({...p,daily:p.daily.filter(d=>d.id!==id)}));
+  const delReward = id => setSt(p=>({...p,rewards:p.rewards.filter(r=>r.id!==id)}));
+
+  const level = getLvl(st.player.xp);
+  const xpS = xpForLvl(level);
+  const xpN = xpForNext(level);
+  const xpPct = Math.min(((st.player.xp - xpS) / (xpN - xpS)) * 100, 100);
+  const activeBlock = st.blocks.find(b=>!b.completed);
+
+  if (!loaded) return (
+    <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)'}}>
+      <div style={{fontFamily:'var(--hud)',color:'var(--pur)',letterSpacing:'6px',fontSize:'16px',textShadow:'0 0 24px rgba(15,168,245,.7)'}}>ЗАГРУЗКА...</div>
+    </div>
+  );
+
+  return (
+    <div id="app">
+      {/* Toasts */}
+      <div id="toasts">
+        {toasts.map(t=>(
+          <div key={t.id} className={`toast${t.type==='lvl'?' lvl':''}`}>{t.msg}</div>
+        ))}
+      </div>
+
+      {/* Modals */}
+      {modal && <FormModal modal={modal} onClose={()=>setModal(null)} onSubmit={submit} />}
+      {questDetail && (
+        <QuestModal
+          qd={questDetail}
+          onComplete={()=>{ completeQuest(questDetail.blockId, questDetail.quest.id); setQuestDetail(null); }}
+          onDelete={()=>{ delQuest(questDetail.blockId, questDetail.quest.id); setQuestDetail(null); }}
+          onEdit={()=>{ setModal({type:'editQuest', blockId:questDetail.blockId, questId:questDetail.quest.id, data:{title:questDetail.quest.title, description:questDetail.quest.description, deadline:questDetail.quest.deadline, reward:String(questDetail.quest.reward)}}); setQuestDetail(null); }}
+          onClose={()=>setQuestDetail(null)}
+        />
+      )}
+
+      {/* Header */}
+      <header id="hdr">
+        <div id="logo">⟨SYSTEM⟩</div>
+        <div className="hdr-div" />
+        <button id="player-btn" onClick={()=>setModal({type:'editPlayer'})}>
+          <span id="pname">{st.player.name}</span>
+          <span id="lvl-badge">LVL {level}</span>
+        </button>
+        <div id="xp-wrap">
+          <span id="xp-lbl">XP</span>
+          <div id="xp-track"><div id="xp-fill" style={{width:`${xpPct}%`}} /></div>
+          <span id="xp-num">{st.player.xp-xpS} / {xpN-xpS}</span>
+        </div>
+        <div id="gold-display">
+          <span id="gold-icon">✦</span>
+          <span id="gold-num">{st.player.gold}</span>
+        </div>
+        <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'11px',flexShrink:0}} onClick={()=>sb.auth.signOut()}>ВЫХОД</button>
+      </header>
+
+      {/* Nav */}
+      <nav id="nav">
+        {[
+          {id:'blocks', label:'Блоки', ic:'◈'},
+          {id:'graph',  label:'Граф', ic:'⬡'},
+          {id:'daily',  label:'Ежедневные', ic:'⊕'},
+          {id:'shop',   label:'Магазин', ic:'◆'},
+        ].map(t=>(
+          <button key={t.id} className={`tab${tab===t.id?' on':''}`} onClick={()=>setTab(t.id)}>
+            <span className="tab-ic">{t.ic}</span>{t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Main */}
+      <div id="main">
+        {tab==='blocks' && (
+          <BlocksView
+            blocks={st.blocks}
+            activeBlock={activeBlock}
+            selBlock={selBlock}
+            setSelBlock={setSelBlock}
+            onAddBlock={()=>setModal({type:'addBlock'})}
+            onAddQuest={bid=>setModal({type:'addQuest', blockId:bid})}
+            onDelBlock={delBlock}
+            onQuestClick={(quest,blockId,isActive)=>setQuestDetail({quest,blockId,isActive})}
+          />
+        )}
+        {tab==='graph' && (
+          <GraphView
+            blocks={st.blocks}
+            activeBlock={activeBlock}
+            onAddBlock={()=>setModal({type:'addBlock'})}
+            setSelBlock={setSelBlock}
+            setTab={setTab}
+            onQuestClick={(quest,blockId,isActive)=>setQuestDetail({quest,blockId,isActive})}
+          />
+        )}
+        {tab==='daily' && (
+          <DailyView
+            quests={st.daily}
+            onComplete={completeDaily}
+            onAdd={()=>setModal({type:'addDaily'})}
+            onDelete={delDaily}
+          />
+        )}
+        {tab==='shop' && (
+          <ShopView
+            rewards={st.rewards}
+            gold={st.player.gold}
+            onBuy={buyReward}
+            onAdd={()=>setModal({type:'addReward'})}
+            onDelete={delReward}
+            onToast={toast}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── BLOCKS VIEW ──
+function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, onAddQuest, onDelBlock, onQuestClick }) {
+  const selData = blocks.find(b=>b.id===selBlock);
+  const activeId = activeBlock?.id;
+
+  return (
+    <div className="bv-layout">
+      {/* Sidebar */}
+      <div className="bv-sidebar">
+        <div className="bv-sidebar-hdr">
+          <span className="sidebar-title">Блоки</span>
+          <button className="btn btn-pur" style={{padding:'5px 10px',fontSize:'11px'}} onClick={onAddBlock}>+ Блок</button>
+        </div>
+
+        {blocks.length === 0 && (
+          <div className="empty" style={{padding:'36px 0'}}>
+            <div className="empty-ic">◈</div>
+            <div className="empty-txt">Нет блоков</div>
+          </div>
+        )}
+
+        {blocks.map((b, i) => {
+          const isActive = b.id === activeId;
+          const isLocked = !b.completed && !isActive;
+          const done = b.quests.filter(q=>q.done).length;
+          const total = b.quests.length;
+          const pct = total > 0 ? (done/total)*100 : 0;
+          let cls = 'blk-card';
+          if (b.id===selBlock) cls+=' blk-sel';
+          if (isActive) cls+=' blk-active';
+          if (b.completed) cls+=' blk-done';
+          if (isLocked) cls+=' blk-locked';
+
+          return (
+            <div key={b.id} className={cls} onClick={()=>setSelBlock(b.id)}>
+              <div className="blk-hdr">
+                <span className="blk-ic">{b.completed?'✅':isActive?'⚡':'🔒'}</span>
+                <span className="blk-name">{b.title}</span>
+                <button className="ic-btn add" title="Добавить задание" onClick={e=>{e.stopPropagation();onAddQuest(b.id);}}>＋</button>
+                <button className="ic-btn" title="Удалить" onClick={e=>{e.stopPropagation();onDelBlock(b.id);}}>✕</button>
+              </div>
+              {total > 0 && (
+                <>
+                  <div className="blk-prog-txt">{done} / {total} задания</div>
+                  <div className="blk-progbar"><div className="blk-progfill" style={{width:`${pct}%`}} /></div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Detail */}
+      <div className="bv-detail">
+        {!selData ? (
+          <div className="empty">
+            <div className="empty-ic">◈</div>
+            <div className="empty-txt">Выберите блок</div>
+          </div>
+        ) : (
+          <BlockDetail
+            block={selData}
+            isActive={selData.id === activeId}
+            onAddQuest={()=>onAddQuest(selData.id)}
+            onQuestClick={(q)=>onQuestClick(q, selData.id, selData.id===activeId)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BlockDetail({ block, isActive, onAddQuest, onQuestClick }) {
+  const isLocked = !block.completed && !isActive;
+  const statusCls = block.completed ? 'st-done' : isActive ? 'st-active' : 'st-locked';
+  const statusTxt = block.completed ? 'COMPLETED' : isActive ? 'ACTIVE' : 'LOCKED';
+
+  return (
+    <>
+      <div className="bdet-hdr">
+        <div>
+          <div className="bdet-title">{block.title}</div>
+          {block.description && <div className="bdet-desc">{block.description}</div>}
+        </div>
+        <div className="bdet-actions">
+          <span className={`status-tag ${statusCls}`}>{statusTxt}</span>
+        </div>
+      </div>
+
+      <div>
+        <div className="rm-section-title">Roadmap</div>
+        <QuestGraph quests={block.quests} isActive={isActive} onQuestClick={onQuestClick} onAddQuest={onAddQuest} />
+      </div>
+    </>
+  );
+}
+
+// ── QUEST DETAIL MODAL ──
+function QuestModal({ qd, onComplete, onDelete, onEdit, onClose }) {
+  const { quest, isActive } = qd;
+  const dl = fmtDl(quest.deadline);
+  const stateTxt = quest.done ? 'ВЫПОЛНЕНО' : isActive ? '⚡ ДОСТУПНО' : '🔒 ЗАБЛОКИРОВАНО';
+  const stateColor = quest.done ? 'var(--grn)' : isActive ? 'var(--pur)' : 'var(--mut2)';
+
+  return (
+    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal" style={{width:'400px',padding:'0'}}>
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',padding:'14px 24px',background:'rgba(15,168,245,0.12)',borderBottom:'1px solid rgba(15,168,245,0.3)'}}>
+          <span style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'3px',color:'var(--pur)',textShadow:'0 0 10px rgba(15,168,245,0.9)'}}>ЗАДАНИЕ</span>
+          <span style={{fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'2px',color:stateColor}}>{stateTxt}</span>
+        </div>
+        {/* Body */}
+        <div style={{padding:'22px 28px'}}>
+          <div style={{fontSize:'20px',fontWeight:700,color:'#e2e8f0',marginBottom:'8px'}}>{quest.title}</div>
+          {quest.description && <div style={{fontSize:'13px',color:'#5a6478',lineHeight:1.55,marginBottom:'12px'}}>{quest.description}</div>}
+          {dl && <div style={{fontSize:'12px',marginBottom:'8px'}}>
+            <span style={{color:'var(--mut2)'}}>Дедлайн: </span>
+            <span style={{color:dl.color,fontWeight:700}}>{dl.text}</span>
+          </div>}
+          <div style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px'}}>+{quest.reward} ✦</div>
+        </div>
+        {/* Buttons */}
+        {!quest.done && (
+          <div style={{display:'flex',gap:'10px',padding:'0 28px 22px',justifyContent:'center'}}>
+            <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',borderColor:'var(--red)',color:'var(--red)'}} onClick={onDelete}>УДАЛИТЬ</button>
+            {isActive && <button className="btn btn-gld" style={{flex:1,justifyContent:'center'}} onClick={onComplete}>✓ ВЫПОЛНИТЬ</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── DAILY VIEW ──
+function DailyQuestModal({ quest, onComplete, onClose }) {
+  return (
+    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal" style={{width:'400px',padding:'0'}}>
+        {/* Header bar */}
+        <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'14px 24px',background:'rgba(15,168,245,0.12)',borderBottom:'1px solid rgba(15,168,245,0.3)'}}>
+          <span style={{color:'var(--pur)',fontSize:'16px'}}>⊕</span>
+          <span style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'3px',color:'var(--pur)',textShadow:'0 0 10px rgba(15,168,245,0.9)'}}>ЕЖЕДНЕВНЫЙ КВЕСТ</span>
+        </div>
+        {/* Body */}
+        <div style={{padding:'24px 28px'}}>
+          <div style={{fontSize:'20px',fontWeight:700,color:'#e2e8f0',marginBottom:'8px'}}>{quest.title}</div>
+          {quest.description && (
+            <div style={{fontSize:'13px',color:'#5a6478',lineHeight:1.55,marginBottom:'12px'}}>{quest.description}</div>
+          )}
+          <div style={{fontFamily:'var(--hud)',fontSize:'13px',color:'var(--gld)',letterSpacing:'1px'}}>+{quest.reward} ✦</div>
+        </div>
+        {/* Buttons */}
+        <div style={{display:'flex',gap:'12px',padding:'0 28px 24px',justifyContent:'center'}}>
+          <button className="btn btn-ghost" style={{flex:1,justifyContent:'center',letterSpacing:'2px'}} onClick={onClose}>
+            ПОЗЖЕ
+          </button>
+          {!quest.done && (
+            <button className="btn btn-gld" style={{flex:1,justifyContent:'center',letterSpacing:'2px'}} onClick={onComplete}>
+              ✓ ВЫПОЛНЕНО
+            </button>
+          )}
+        {quest.done && null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DailyView({ quests, onComplete, onAdd, onDelete }) {
+  const [dqModal, setDqModal] = useState(null);
+  const done = quests.filter(q=>q.done).length;
+  return (
+    <div className="dv-layout" style={{alignItems:'center'}}>
+      {dqModal && (
+        <DailyQuestModal
+          quest={dqModal}
+          onComplete={()=>{ onComplete(dqModal.id); setDqModal(null); }}
+          onClose={()=>setDqModal(null)}
+        />
+      )}
+      <div className="view-hdr" style={{width:'100%',maxWidth:'560px'}}>
+        <div>
+          <div className="view-title">Ежедневные Квесты</div>
+          <div className="view-sub">{done} / {quests.length} выполнено · сброс в полночь</div>
+        </div>
+        <button className="btn btn-pur" onClick={onAdd}>+ Квест</button>
+      </div>
+
+      {quests.length === 0 && (
+        <div className="empty">
+          <div className="empty-ic">⊕</div>
+          <div className="empty-txt">Нет ежедневных квестов</div>
+          <button className="btn btn-pur" onClick={onAdd}>Добавить первый</button>
+        </div>
+      )}
+
+      {quests.filter(q=>!q.done).map(q => (
+        <div key={q.id} className={`dq-card${q.done?' dq-done':''}`}
+          style={{width:'100%',maxWidth:'560px',cursor:'pointer'}}
+          onClick={()=>setDqModal(q)}>
+          <div className={`dq-check${q.done?' done':''}`} style={{pointerEvents:'none'}}>
+            {q.done ? '✓' : ''}
+          </div>
+          <div className="dq-info" style={{flex:1}}>
+            <div className="dq-name" style={q.done?{textDecoration:'line-through',opacity:.6}:{}}>{q.title}</div>
+            {q.description && <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'2px'}}>{q.description}</div>}
+            <div className="dq-rew">+{q.reward} ✦</div>
+          </div>
+          <button className="ic-btn" onClick={e=>{e.stopPropagation();onDelete(q.id);}}>✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── SHOP VIEW ──
+function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onToast }) {
+  return (
+    <div className="sv-layout">
+      <div className="view-hdr">
+        <div>
+          <div className="view-title">Магазин Наград</div>
+          <div className="sv-bal"><span>✦</span>{gold} очков</div>
+        </div>
+        <button className="btn btn-pur" onClick={onAdd}>+ Награда</button>
+      </div>
+
+      {rewards.length === 0 && (
+        <div className="empty">
+          <div className="empty-ic">◆</div>
+          <div className="empty-txt">Нет наград в магазине</div>
+          <button className="btn btn-pur" onClick={onAdd}>Добавить первую</button>
+        </div>
+      )}
+
+      <div className="rwd-grid">
+        {rewards.map(r => {
+          const canBuy = !r.bought && gold >= r.cost;
+          const poor = !r.bought && gold < r.cost;
+          return (
+            <div key={r.id} className={`rwd-card${r.bought?' bought':''}${poor?' poor':''}`}>
+              <div className="rwd-title">{r.title}</div>
+              {r.description && <div className="rwd-desc">{r.description}</div>}
+              <div className={`rwd-cost${poor?' poor':''}`}><span>✦</span>{r.cost}</div>
+              {r.bought ? (
+                <div className="rwd-bought-tag">✅ ПОЛУЧЕНО</div>
+              ) : (
+                <div className="rwd-btns">
+                <button
+                    className="btn btn-gld"
+                    style={{flex:1,padding:'8px'}}
+                    onClick={()=>{ if(canBuy) onBuy(r.id); else onToast('Недостаточно очков ✦'); }}
+                  >Купить</button>
+                  <button className="ic-btn" title="Удалить" onClick={()=>onDelete(r.id)}>✕</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── FORM MODAL ──
+const FORMS = {
+  addBlock: {
+    title:'Новый Блок',
+    fields:[
+      {k:'title',    label:'Название',   type:'text', req:true},
+      {k:'description', label:'Описание', type:'textarea'},
+    ]
+  },
+  addQuest: {
+    title:'Новое Задание',
+    fields:[
+      {k:'title',       label:'Название',    type:'text', req:true},
+      {k:'description', label:'Описание',    type:'textarea'},
+      {k:'deadline',    label:'Дедлайн',     type:'date'},
+      {k:'reward',      label:'Награда (✦)', type:'number', ph:'25'},
+    ]
+  },
+  addDaily: {
+    title:'Ежедневный Квест',
+    fields:[
+      {k:'title',       label:'Название',    type:'text', req:true},
+      {k:'description', label:'Описание',    type:'textarea'},
+      {k:'reward',      label:'Награда (✦)', type:'number', ph:'10'},
+    ]
+  },
+  addReward: {
+    title:'Новая Награда',
+    fields:[
+      {k:'title',       label:'Название',        type:'text', req:true},
+      {k:'description', label:'Описание',         type:'textarea'},
+      {k:'cost',        label:'Стоимость (✦)',    type:'number', ph:'100'},
+    ]
+  },
+  editQuest: { title:'Редактировать задание', fields:[
+    {k:'title',       label:'Название',    type:'text', req:true},
+    {k:'description', label:'Описание',    type:'textarea'},
+    {k:'deadline',    label:'Дедлайн',     type:'date'},
+    {k:'reward',      label:'Награда (✦)', type:'number', ph:'25'},
+  ]},
+  editPlayer: {
+    title:'Профиль',
+    fields:[
+      {k:'name', label:'Имя игрока', type:'text', req:true},
+    ]
+  },
+};
+
+function FormModal({ modal, onClose, onSubmit }) {
+  const def = FORMS[modal.type];
+  const [form, setForm] = useState(modal.data || {});
+  if (!def) return null;
+
+  const set = (k,v) => setForm(p=>({...p,[k]:v}));
+  const go = () => {
+    if (def.fields.some(f=>f.req && !form[f.k]?.trim())) return;
+    onSubmit(form);
+  };
+
+  return (
+    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal">
+        <div className="modal-title">{def.title}</div>
+        {def.fields.map(f=>(
+          <div key={f.k} className="fg">
+            <label className="flbl">{f.label}</label>
+            {f.type==='textarea' ? (
+              <textarea className="fta" value={form[f.k]||''} onChange={e=>set(f.k,e.target.value)} />
+            ) : (
+              <input
+                className="fi" type={f.type}
+                value={form[f.k]||''} placeholder={f.ph||''}
+                onChange={e=>set(f.k,e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&go()}
+              />
+            )}
+          </div>
+        ))}
+        <div className="modal-acts">
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-pur" onClick={go}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── QUEST GRAPH (roadmap inside block) ──
+function QuestGraph({ quests, isActive, onQuestClick, onAddQuest }) {
+  if (quests.length === 0) {
+    return (
+      <div className="empty" style={{padding:'48px 0'}}>
+        <div className="empty-ic">◎</div>
+        <div className="empty-txt">Нет заданий</div>
+      </div>
+    );
+  }
+  const R = 30, CONN = 70, STEP = R*2+CONN, PAD = 40, INFO = 72;
+  const W = quests.length * STEP + PAD*2 - CONN;
+  const H = R*2 + PAD*2 + INFO;
+  const cy = PAD + R;
+
+  return (
+    <div style={{overflowX:'auto', padding:'16px 0 24px'}}>
+      <svg width={W} height={H} style={{display:'block',overflow:'visible'}}>
+        <defs>
+          <filter id="glow-blue"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glow-green"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+
+        {/* Connectors */}
+        {quests.slice(1).map((q,i) => {
+          const x1 = PAD + i*STEP + R;
+          const x2 = PAD + (i+1)*STEP - R;
+          const done = quests[i].done;
+          return (
+            <line key={i}
+              x1={x1+R} y1={cy} x2={x2-R} y2={cy}
+              stroke={done ? '#10b981' : '#1a2d4a'}
+              strokeWidth={2} strokeDasharray={done ? 'none' : '6 4'}
+              opacity={done ? 1 : 0.5}
+            />
+          );
+        })}
+
+        {/* Nodes */}
+        {quests.map((q, i) => {
+          const cx = PAD + i*STEP + R;
+          const done = q.done;
+          const avail = isActive && !done;
+          const locked = !isActive && !done;
+          const fill = done ? 'rgba(16,185,129,0.12)' : avail ? 'rgba(15,168,245,0.12)' : '#080f1c';
+          const stroke = done ? '#10b981' : avail ? '#0fa8f5' : '#1a2d4a';
+          const textCol = done ? '#10b981' : avail ? '#0fa8f5' : '#3a4a5a';
+          const dl = fmtDl(q.deadline);
+
+          return (
+            <g key={q.id} style={{cursor: locked?'default':'pointer'}} onClick={()=>!locked&&onQuestClick(q)}>
+              {avail && <circle cx={cx} cy={cy} r={R+7} fill="none" stroke="rgba(15,168,245,0.2)" strokeWidth={1.5} />}
+              <circle cx={cx} cy={cy} r={R} fill={fill} stroke={stroke} strokeWidth={2}
+                filter={done ? 'url(#glow-green)' : avail ? 'url(#glow-blue)' : 'none'} />
+              <text x={cx} y={cy+6} textAnchor="middle" fontSize={15} fontWeight={800}
+                fill={textCol} fontFamily="Orbitron,sans-serif">
+                {done ? '✓' : i+1}
+              </text>
+              {/* Info below node */}
+              <text x={cx} y={cy+R+18} textAnchor="middle" fontSize={12} fontWeight={700}
+                fill={done?'#5a6478':'#e2e8f0'} fontFamily="Rajdhani,sans-serif">
+                {q.title.length > 13 ? q.title.slice(0,13)+'…' : q.title}
+              </text>
+              {dl && <text x={cx} y={cy+R+33} textAnchor="middle" fontSize={10} fill={dl.color} fontFamily="Rajdhani,sans-serif" fontWeight={600}>{dl.text}</text>}
+              <text x={cx} y={cy+R+(dl?50:36)} textAnchor="middle" fontSize={10}
+                fill="#94eaff" fontFamily="Orbitron,sans-serif">+{q.reward}✦</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// ── GRAPH VIEW — force-directed canvas + planet/satellite ──
+function GraphView({ blocks, activeBlock, onAddBlock, setSelBlock, setTab, onQuestClick }) {
+  const canvasRef = React.useRef(null);
+  const containerRef = React.useRef(null);
+  const stRef = React.useRef({ nodes:[], blocks, activeId:activeBlock?.id, dragging:null, animId:null, orbitAngles:{}, repulsion:180000, spring:0.45 });
+  const [sliders, setSliders] = React.useState({ repulsion:180000, spring:0.45 });
+  const dragStart = React.useRef(null);
+
+  React.useEffect(() => {
+    stRef.current.blocks = blocks;
+    stRef.current.activeId = activeBlock?.id;
+    const canvas = canvasRef.current;
+    const w = canvas ? canvas.width : 800, h = canvas ? canvas.height : 500;
+    const existing = new Map(stRef.current.nodes.map(n=>[n.id,n]));
+    stRef.current.nodes = blocks.map((b,i) => {
+      if (existing.has(b.id)) return existing.get(b.id);
+      const angle = (i/Math.max(blocks.length,1))*Math.PI*2;
+      return { id:b.id, x:w/2+Math.cos(angle)*180, y:h/2+Math.sin(angle)*180, vx:0, vy:0 };
+    });
+  }, [blocks, activeBlock && activeBlock.id]);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current, con = containerRef.current;
+    if (!canvas||!con) return;
+    const ctx = canvas.getContext('2d');
+    const R=52, ORBT=94, QR=11;
+
+    const resize = () => {
+      canvas.width = con.clientWidth;
+      canvas.height = con.clientHeight;
+      if (stRef.current.nodes.length===0 && stRef.current.blocks.length>0) {
+        const w=canvas.width, h=canvas.height;
+        stRef.current.nodes = stRef.current.blocks.map((b,i) => {
+          const angle=(i/Math.max(stRef.current.blocks.length,1))*Math.PI*2;
+          return { id:b.id, x:w/2+Math.cos(angle)*180, y:h/2+Math.sin(angle)*180, vx:0, vy:0 };
+        });
+      }
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const tick = () => {
+      const st=stRef.current;
+      const { nodes, blocks, activeId, orbitAngles } = st;
+      const w=canvas.width, h=canvas.height;
+
+      // Physics
+      for (let i=0; i<nodes.length; i++) {
+        const n=nodes[i];
+        if (st.dragging===n.id) { n.vx=0; n.vy=0; continue; }
+        let fx=0, fy=0;
+        fx += (w/2-n.x)*0.028; fy += (h/2-n.y)*0.028;
+        for (let j=0; j<nodes.length; j++) {
+          if (i===j) continue;
+          const dx=n.x-nodes[j].x, dy=n.y-nodes[j].y;
+          const d2=Math.max(dx*dx+dy*dy,1), d=Math.sqrt(d2);
+          const rep=stRef.current.repulsion; fx+=dx/d*Math.min(rep/d2,800); fy+=dy/d*Math.min(rep/d2,800);
+        }
+        for (const di of [-1,1]) {
+          const nb=nodes[i+di]; if(!nb) continue;
+          const dx=nb.x-n.x, dy=nb.y-n.y;
+          const d=Math.sqrt(dx*dx+dy*dy)||1;
+          const f=Math.max(-80,Math.min(80,(d-250)*stRef.current.spring));
+          fx+=dx/d*f; fy+=dy/d*f;
+        }
+        n.vx=(n.vx+fx)*0.75; n.vy=(n.vy+fy)*0.75;
+        n.x=Math.max(R+ORBT+8,Math.min(w-R-ORBT-8,n.x+n.vx));
+        n.y=Math.max(R+ORBT+8,Math.min(h-R-ORBT-8,n.y+n.vy));
+      }
+
+      // Update orbit angles
+      for (let i=0; i<nodes.length; i++) {
+        const blk=blocks[i]; if(!blk) continue;
+        const n=nodes[i];
+        if (!orbitAngles[n.id]) orbitAngles[n.id]=blk.quests.map((_,qi)=>(qi/Math.max(blk.quests.length,1))*Math.PI*2);
+        const angles=orbitAngles[n.id];
+        while(angles.length<blk.quests.length) angles.push((angles.length/Math.max(blk.quests.length,1))*Math.PI*2);
+        angles.length=blk.quests.length;
+        for(let qi=0;qi<blk.quests.length;qi++) angles[qi]+=0.007+qi*0.0015;
+      }
+
+      ctx.clearRect(0,0,w,h);
+
+      // Edges
+      for (let i=1; i<nodes.length; i++) {
+        const a=nodes[i-1], b=nodes[i], blk=blocks[i-1];
+        const done=blk&&blk.completed, act=blk&&blk.id===activeId;
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle=done?'#10b981':act?'#0fa8f5':'#1e3050';
+        ctx.lineWidth=2; ctx.globalAlpha=done?0.7:0.35;
+        ctx.setLineDash(done?[]:[10,7]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+      }
+
+      // Orbit rings
+      for (let i=0; i<nodes.length; i++) {
+        const n=nodes[i], blk=blocks[i]; if(!blk||blk.quests.length===0) continue;
+        const isAct=blk.id===activeId, isDone=blk.completed;
+        ctx.beginPath(); ctx.arc(n.x,n.y,ORBT,0,Math.PI*2);
+        ctx.strokeStyle=isDone?'rgba(16,185,129,0.18)':isAct?'rgba(15,168,245,0.18)':'rgba(255,255,255,0.05)';
+        ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.stroke(); ctx.setLineDash([]);
+      }
+
+      // Planets
+      for (let i=0; i<nodes.length; i++) {
+        const n=nodes[i], blk=blocks[i]; if(!blk) continue;
+        const isAct=blk.id===activeId, isDone=blk.completed;
+        const total=blk.quests.length, done=blk.quests.filter(q=>q.done).length;
+        if (isAct) {
+          const g=ctx.createRadialGradient(n.x,n.y,R-8,n.x,n.y,R+28);
+          g.addColorStop(0,'rgba(15,168,245,0.28)'); g.addColorStop(1,'rgba(15,168,245,0)');
+          ctx.beginPath(); ctx.arc(n.x,n.y,R+28,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+        }
+        if (isDone) {
+          const g=ctx.createRadialGradient(n.x,n.y,R-8,n.x,n.y,R+22);
+          g.addColorStop(0,'rgba(16,185,129,0.22)'); g.addColorStop(1,'rgba(16,185,129,0)');
+          ctx.beginPath(); ctx.arc(n.x,n.y,R+22,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+        }
+        const pg=ctx.createRadialGradient(n.x-R*0.3,n.y-R*0.3,R*0.1,n.x,n.y,R);
+        if (isDone) { pg.addColorStop(0,'rgba(20,100,70,0.92)'); pg.addColorStop(1,'rgba(8,40,28,0.96)'); }
+        else if (isAct) { pg.addColorStop(0,'rgba(20,60,160,0.92)'); pg.addColorStop(1,'rgba(6,20,60,0.96)'); }
+        else { pg.addColorStop(0,'rgba(20,30,50,0.9)'); pg.addColorStop(1,'rgba(4,10,20,0.96)'); }
+        ctx.beginPath(); ctx.arc(n.x,n.y,R,0,Math.PI*2); ctx.fillStyle=pg; ctx.fill();
+        ctx.strokeStyle=isDone?'#10b981':isAct?'#0fa8f5':'#1a2d4a';
+        ctx.lineWidth=isAct?2.5:1.8; ctx.stroke();
+        if (total>0&&done>0) {
+          ctx.beginPath(); ctx.arc(n.x,n.y,R+5,-Math.PI/2,-Math.PI/2+(done/total)*Math.PI*2);
+          ctx.strokeStyle=isDone?'#10b981':'#0fa8f5'; ctx.lineWidth=3; ctx.stroke();
+        }
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.font='bold 12px Orbitron,monospace';
+        ctx.fillStyle=isDone?'#10b981':isAct?'#0fa8f5':'#2a3a4a';
+        ctx.fillText(isDone?'V':isAct?'>':'x', n.x, n.y-12);
+        ctx.font='bold 12px Rajdhani,sans-serif';
+        ctx.fillStyle=isDone?'#10b981':isAct?'#e2e8f0':'#5a6478';
+        const t=blk.title.length>13?blk.title.slice(0,13)+'...':blk.title;
+        ctx.fillText(t, n.x, n.y+4);
+        if (total>0) {
+          ctx.font='bold 9px Orbitron,sans-serif';
+          ctx.fillStyle=isDone?'rgba(16,185,129,0.8)':'rgba(58,90,122,0.9)';
+          ctx.fillText(done+'/'+total, n.x, n.y+17);
+        }
+      }
+
+      // Satellites
+      for (let i=0; i<nodes.length; i++) {
+        const n=nodes[i], blk=blocks[i]; if(!blk||blk.quests.length===0) continue;
+        const isAct=blk.id===activeId, isDone=blk.completed;
+        const angles=orbitAngles[n.id]||[];
+        for (let qi=0; qi<blk.quests.length; qi++) {
+          const q=blk.quests[qi], angle=angles[qi]||0;
+          const qx=n.x+Math.cos(angle)*ORBT;
+          const qy=n.y+Math.sin(angle)*ORBT;
+          const qDone=q.done;
+          if (isAct&&!qDone) {
+            const sg=ctx.createRadialGradient(qx,qy,0,qx,qy,QR+6);
+            sg.addColorStop(0,'rgba(15,168,245,0.35)'); sg.addColorStop(1,'rgba(15,168,245,0)');
+            ctx.beginPath(); ctx.arc(qx,qy,QR+6,0,Math.PI*2); ctx.fillStyle=sg; ctx.fill();
+          }
+          ctx.beginPath(); ctx.arc(qx,qy,QR,0,Math.PI*2);
+          ctx.fillStyle=qDone?'rgba(16,185,129,0.85)':isAct?'rgba(15,168,245,0.75)':'rgba(15,25,45,0.85)';
+          ctx.fill();
+          ctx.strokeStyle=qDone?'#10b981':isAct?'#0fa8f5':'#1a2d4a';
+          ctx.lineWidth=1.5; ctx.stroke();
+          ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.font='bold 8px Orbitron,monospace';
+          ctx.fillStyle=qDone||isAct?'#fff':'#3a5a7a';
+          ctx.fillText(qDone?'v':qi+1, qx, qy);
+        }
+      }
+
+      st.animId=requestAnimationFrame(tick);
+    };
+    stRef.current.animId=requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(stRef.current.animId); window.removeEventListener('resize',resize); };
+  }, []);
+
+  const getSatellite = (mx, my) => {
+    const { nodes, blocks, orbitAngles } = stRef.current;
+    const ORBT=94, QR=15;
+    for (let i=0; i<nodes.length; i++) {
+      const n=nodes[i], blk=blocks[i]; if(!blk) continue;
+      const angles=orbitAngles[n.id]||[];
+      for (let qi=0; qi<blk.quests.length; qi++) {
+        const angle=angles[qi]||0;
+        const qx=n.x+Math.cos(angle)*ORBT, qy=n.y+Math.sin(angle)*ORBT;
+        const dx=qx-mx, dy=qy-my;
+        if (Math.sqrt(dx*dx+dy*dy)<QR) return { quest:blk.quests[qi], blockId:blk.id, isActive:blk.id===stRef.current.activeId };
+      }
+    }
+    return null;
+  };
+
+  const getNode = e => {
+    const canvas=canvasRef.current; if(!canvas) return null;
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    return stRef.current.nodes.find(n=>{ const dx=n.x-mx,dy=n.y-my; return Math.sqrt(dx*dx+dy*dy)<56; });
+  };
+  const onMD = e => {
+    const n=getNode(e);
+    if(n){
+      stRef.current.dragging=n.id;
+      dragStart.current={id:n.id, x:e.clientX, y:e.clientY, sat:null};
+      e.preventDefault();
+    } else {
+      const canvas=canvasRef.current;
+      const rect=canvas&&canvas.getBoundingClientRect();
+      const mx=rect?e.clientX-rect.left:0, my=rect?e.clientY-rect.top:0;
+      const sat=getSatellite(mx,my);
+      dragStart.current={id:null, x:e.clientX, y:e.clientY, sat};
+      e.preventDefault();
+    }
+  };
+  const onMM = e => {
+    const canvas=canvasRef.current; if(!canvas) return;
+    const rect=canvas.getBoundingClientRect();
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    if(stRef.current.dragging){
+      const n=stRef.current.nodes.find(n=>n.id===stRef.current.dragging);
+      if(n){ n.x=mx; n.y=my; dragStart.current=null; }
+    }
+    const hovP=stRef.current.nodes.find(n=>{ const dx=n.x-mx,dy=n.y-my; return Math.sqrt(dx*dx+dy*dy)<56; });
+    const hovS=!hovP && getSatellite(mx,my);
+    canvas.style.cursor=(hovP||hovS)?'pointer':'default';
+  };
+  const onMU = e => {
+    const start=dragStart.current;
+    stRef.current.dragging=null; dragStart.current=null;
+    if(!start) return;
+    const moved=Math.abs(e.clientX-start.x)+Math.abs(e.clientY-start.y);
+    if(moved<10){
+      if(start.id){
+        const blk=stRef.current.blocks.find(b=>b.id===start.id);
+        if(blk){ setSelBlock(blk.id); setTab('blocks'); return; }
+      }
+      if(start.sat){ onQuestClick(start.sat.quest, start.sat.blockId, start.sat.isActive); }
+    }
+  };
+
+  return (
+    <div ref={containerRef} style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',padding:'24px',gap:'16px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+        <div>
+          <div style={{fontFamily:'var(--hud)',fontSize:'18px',fontWeight:800,letterSpacing:'2px'}}>ГРАФ ПРОГРЕССА</div>
+          <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'4px',fontWeight:600}}>
+            {blocks.filter(b=>b.completed).length}/{blocks.length} завершено
+          </div>
+        </div>
+        <button className="btn btn-pur" onClick={()=>setTab('blocks')}>◈ Блоки</button>
+      </div>
+      {blocks.length===0 ? (
+        <div className="empty" style={{flex:1}}>
+          <div className="empty-ic">&#x2B21;</div>
+          <div className="empty-txt">Нет блоков</div>
+          <button className="btn btn-pur" onClick={onAddBlock}>Создать первый</button>
+        </div>
+      ) : (
+        <canvas ref={canvasRef} style={{flex:1,width:'100%',display:'block'}}
+          onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU}
+          onMouseLeave={()=>{ stRef.current.dragging=null; dragStart.current=null; }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Login Screen ──
+function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState('login');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handle = async e => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    let res;
+    if (mode === 'login') res = await sb.auth.signInWithPassword({ email, password });
+    else res = await sb.auth.signUp({ email, password });
+    if (res.error) setError(res.error.message);
+    else if (mode === 'signup') setSent(true);
+    setLoading(false);
+  };
+
+  const inpStyle = {
+    width:'100%', padding:'10px 14px', background:'var(--s2)', border:'1px solid var(--bd2)',
+    borderRadius:'4px', color:'var(--txt)', fontFamily:'var(--body)', fontSize:'14px',
+    fontWeight:600, outline:'none', boxSizing:'border-box',
+  };
+
+  return (
+    <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)',
+      backgroundImage:'linear-gradient(rgba(15,168,245,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(15,168,245,.03) 1px,transparent 1px)',
+      backgroundSize:'52px 52px'}}>
+      <div style={{width:'360px',background:'var(--s1)',border:'1px solid var(--bd)',borderRadius:'8px',padding:'36px 32px'}}>
+        <div style={{fontFamily:'var(--hud)',fontSize:'22px',fontWeight:900,color:'var(--pur)',letterSpacing:'5px',textAlign:'center',marginBottom:'8px',textShadow:'0 0 24px rgba(15,168,245,.7)'}}>⟨SYSTEM⟩</div>
+        <div style={{fontFamily:'var(--hud)',fontSize:'10px',color:'var(--mut2)',letterSpacing:'3px',textAlign:'center',marginBottom:'28px'}}>
+          {mode === 'login' ? 'ВХОД В СИСТЕМУ' : 'РЕГИСТРАЦИЯ'}
+        </div>
+        {sent ? (
+          <div style={{textAlign:'center',color:'var(--grn)',fontFamily:'var(--hud)',fontSize:'12px',letterSpacing:'1px',lineHeight:1.6}}>
+            Письмо отправлено!<br/>Подтверди email, затем войди.
+          </div>
+        ) : (
+          <form onSubmit={handle} style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+            <input style={inpStyle} type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+            <input style={inpStyle} type="password" placeholder="Пароль" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6} />
+            {error && <div style={{color:'var(--red)',fontFamily:'var(--hud)',fontSize:'11px',letterSpacing:'1px'}}>{error}</div>}
+            <button type="submit" className="btn btn-pur" style={{width:'100%',justifyContent:'center'}} disabled={loading}>
+              {loading ? '...' : mode === 'login' ? 'ВОЙТИ' : 'СОЗДАТЬ АККАУНТ'}
+            </button>
+          </form>
+        )}
+        <div style={{textAlign:'center',marginTop:'18px'}}>
+          <button onClick={()=>{setMode(m=>m==='login'?'signup':'login');setError('');setSent(false);}}
+            style={{background:'none',border:'none',color:'var(--mut2)',fontFamily:'var(--hud)',fontSize:'10px',letterSpacing:'1.5px',cursor:'pointer'}}>
+            {mode === 'login' ? 'НЕТ АККАУНТА? РЕГИСТРАЦИЯ' : 'УЖЕ ЕСТЬ АККАУНТ? ВОЙТИ'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Root (auth gate) ──
+function Root() {
+  const [session, setSession] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    sb.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setChecking(false);
+    });
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_, s) => setSession(s));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (checking) return (
+    <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'var(--bg)'}}>
+      <div style={{fontFamily:'var(--hud)',color:'var(--pur)',letterSpacing:'6px',fontSize:'16px',textShadow:'0 0 24px rgba(15,168,245,.7)'}}>...</div>
+    </div>
+  );
+  if (!session) return <LoginScreen />;
+  return <App session={session} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+</body>
+</html>
