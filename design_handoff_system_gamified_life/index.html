@@ -806,6 +806,10 @@ function App({ session }) {
       })}));
     } else if (type === 'addReward') {
       setSt(p => ({ ...p, rewards:[...p.rewards, {id:uid(), title:data.title, description:data.description||'', cost:parseInt(data.cost)||100, bought:false, repeatable:!!data.repeatable, count:0}] }));
+    } else if (type === 'editReward') {
+      setSt(p => ({...p, rewards:p.rewards.map(r => r.id!==modal.rewardId ? r : {
+        ...r, title:data.title||r.title, description:data.description||'', cost:parseInt(data.cost)||r.cost, repeatable:!!data.repeatable,
+      })}));
     } else if (type === 'editPlayer') {
       setSt(p => ({ ...p, player:{...p.player, name:data.name||p.player.name} }));
     }
@@ -925,6 +929,7 @@ function App({ session }) {
             onBuy={buyReward}
             onAdd={()=>setModal({type:'addReward'})}
             onDelete={delReward}
+            onEdit={r=>setModal({type:'editReward', rewardId:r.id, data:{title:r.title, description:r.description, cost:String(r.cost), repeatable:r.repeatable}})}
             onToast={toast}
           />
         )}
@@ -1039,7 +1044,7 @@ function QuestModal({ qd, onComplete, onDelete, onEdit, onClose }) {
 
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{width:'400px',padding:'0'}}>
+      <div className="modal" style={{padding:'0'}}>
         {/* Header */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',padding:'14px 24px',background:'rgba(15,168,245,0.12)',borderBottom:'1px solid rgba(15,168,245,0.3)'}}>
           <span style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'3px',color:'var(--pur)',textShadow:'0 0 10px rgba(15,168,245,0.9)'}}>ЗАДАНИЕ</span>
@@ -1071,7 +1076,7 @@ function RecurringQuestModal({ quest, onComplete, onEdit, onClose }) {
   const due = isDue(quest);
   return (
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{width:'400px',padding:'0'}}>
+      <div className="modal" style={{padding:'0'}}>
         <div style={{display:'flex',alignItems:'center',gap:'10px',padding:'14px 24px',background:'rgba(15,168,245,0.12)',borderBottom:'1px solid rgba(15,168,245,0.3)'}}>
           <span style={{color:'var(--pur)',fontSize:'16px'}}>⊕</span>
           <span style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'3px',color:'var(--pur)',textShadow:'0 0 10px rgba(15,168,245,0.9)'}}>РЕГУЛЯРНЫЙ КВЕСТ</span>
@@ -1199,7 +1204,7 @@ function DailyView({ quests, onComplete, onAdd, onDelete, onEdit }) {
 }
 
 // ── SHOP VIEW ──
-function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onToast }) {
+function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onEdit, onToast }) {
   return (
     <div className="sv-layout">
       <div className="view-hdr">
@@ -1239,7 +1244,10 @@ function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onToast }) {
               {oneTimeBought ? (
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                   <div className="rwd-bought-tag">✅ ПОЛУЧЕНО</div>
-                  <button className="ic-btn" title="Удалить" onClick={()=>onDelete(r.id)}>✕</button>
+                  <div style={{display:'flex',gap:'4px'}}>
+                    <button className="ic-btn" title="Изменить" onClick={()=>onEdit(r)}>✎</button>
+                    <button className="ic-btn" title="Удалить" onClick={()=>onDelete(r.id)}>✕</button>
+                  </div>
                 </div>
               ) : (
                 <div className="rwd-btns">
@@ -1247,6 +1255,7 @@ function ShopView({ rewards, gold, onBuy, onAdd, onDelete, onToast }) {
                     onClick={()=>{ if(canBuy) onBuy(r.id); else onToast('Недостаточно очков ✦'); }}>
                     {r.repeatable && (r.count||0)>0 ? `Ещё раз` : 'Купить'}
                   </button>
+                  <button className="ic-btn" title="Изменить" onClick={()=>onEdit(r)}>✎</button>
                   <button className="ic-btn" title="Удалить" onClick={()=>onDelete(r.id)}>✕</button>
                 </div>
               )}
@@ -1299,6 +1308,12 @@ const FORMS = {
     {k:'description', label:'Описание',      type:'textarea'},
     {k:'period',      label:'Периодичность', type:'periodSelect'},
     {k:'reward',      label:'Награда (✦)',   type:'number', ph:'10'},
+  ]},
+  editReward: { title:'Изменить награду', fields:[
+    {k:'title',       label:'Название',        type:'text',     req:true},
+    {k:'description', label:'Описание',         type:'textarea'},
+    {k:'cost',        label:'Стоимость (✦)',    type:'number',   ph:'100'},
+    {k:'repeatable',  label:'Тип',             type:'checkbox', checkLabel:'Многоразовая (можно купить несколько раз)'},
   ]},
   editQuest: { title:'Редактировать задание', fields:[
     {k:'title',       label:'Название',    type:'text', req:true},
