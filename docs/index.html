@@ -675,13 +675,18 @@ const migrateRecurring = (arr = []) => arr.map(q => {
 });
 
 const migrateSystems = (state) => {
-  if (state.systems !== undefined) return state;
-  return {
-    ...state,
-    systems: (state.blocks && state.blocks.length > 0)
-      ? [{ id: uid(), title: 'Система 1', description: '', completed: false, blocks: state.blocks }]
-      : [],
-  };
+  let s = state;
+  if (s.systems === undefined) {
+    s = {
+      ...s,
+      systems: (s.blocks && s.blocks.length > 0)
+        ? [{ id: uid(), title: 'Система 1', description: '', completed: false, reward: 0, blocks: s.blocks }]
+        : [],
+    };
+  } else {
+    s = { ...s, systems: s.systems.map(sys => sys.reward !== undefined ? sys : { ...sys, reward: 0 }) };
+  }
+  return s;
 };
 
 // ── Default state ──
@@ -760,12 +765,13 @@ function App({ session }) {
       const newBlock = {...blk, quests:newQuests, completed:blockAllDone};
       const newSysBlocks = sys.blocks.map(b => b.id!==blockId ? b : newBlock);
       const sysAllDone = newSysBlocks.every(b=>b.completed);
+      const sysRew = sysAllDone ? (sys.reward || 0) : 0;
       const newSys = {...sys, blocks:newSysBlocks, completed:sysAllDone};
       const newSystems = p.systems.map(s => s.id!==systemId ? s : newSys);
       setTimeout(() => toast(`+${questRew} ✦  Задание выполнено!`), 0);
       if (blockAllDone) setTimeout(() => toast(`🌍 Планета «${blk.title}» завершена!${blockRew>0?' +'+blockRew+' ✦':''}`, 'lvl'), 600);
-      if (sysAllDone) setTimeout(() => toast(`⭐ Система «${sys.title}» завершена!`, 'lvl'), 1200);
-      return {...p, player:earn(p, questRew + blockRew), systems:newSystems};
+      if (sysAllDone) setTimeout(() => toast(`⭐ Система «${sys.title}» завершена!${sysRew>0?' +'+sysRew+' ✦':''}`, 'lvl'), 1200);
+      return {...p, player:earn(p, questRew + blockRew + sysRew), systems:newSystems};
     });
   }, [toast]);
 
@@ -800,7 +806,7 @@ function App({ session }) {
     if (!modal) return;
     const { type } = modal;
     if (type === 'addSystem') {
-      const ns = { id:uid(), title:data.title||'Система', description:data.description||'', completed:false, blocks:[] };
+      const ns = { id:uid(), title:data.title||'Система', description:data.description||'', reward:parseInt(data.reward)||0, completed:false, blocks:[] };
       setSt(p => ({ ...p, systems:[...p.systems, ns] }));
     } else if (type === 'addBlock') {
       const nb = { id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||0, completed:false, quests:[] };
@@ -839,6 +845,36 @@ function App({ session }) {
   const delQuest = (sid,bid,qid) => setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.map(b=>b.id!==bid?b:{...b,quests:b.quests.filter(q=>q.id!==qid)})})}));
   const delDaily = id => setSt(p=>({...p,daily:p.daily.filter(d=>d.id!==id)}));
   const delReward = id => setSt(p=>({...p,rewards:p.rewards.filter(r=>r.id!==id)}));
+
+  // ── Move block / quest ──
+  const moveBlock = (fromSysId, blockId, toSysId) => {
+    if (fromSysId === toSysId) return;
+    setSt(p => {
+      let blk = null;
+      const systems = p.systems.map(s => {
+        if (s.id === fromSysId) { blk = s.blocks.find(b=>b.id===blockId); return {...s, blocks:s.blocks.filter(b=>b.id!==blockId)}; }
+        return s;
+      });
+      if (!blk) return p;
+      return {...p, systems: systems.map(s => s.id===toSysId ? {...s, blocks:[...s.blocks, blk]} : s)};
+    });
+  };
+  const moveQuest = (fromSysId, fromBlockId, questId, toSysId, toBlockId) => {
+    if (fromBlockId === toBlockId) return;
+    setSt(p => {
+      let q = null;
+      const systems = p.systems.map(s => {
+        if (s.id === fromSysId) return {...s, blocks:s.blocks.map(b => {
+          if (b.id !== fromBlockId) return b;
+          q = b.quests.find(x=>x.id===questId);
+          return {...b, quests:b.quests.filter(x=>x.id!==questId)};
+        })};
+        return s;
+      });
+      if (!q) return p;
+      return {...p, systems: systems.map(s => s.id===toSysId ? {...s, blocks:s.blocks.map(b => b.id===toBlockId ? {...b, quests:[...b.quests, {...q, done:false}]} : b)} : s)};
+    });
+  };
 
   const level = getLvl(st.player.xp);
   const xpS = xpForLvl(level);
@@ -925,6 +961,9 @@ function App({ session }) {
             onSaveBlock={(sid,bid,data)=>setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.map(b=>b.id!==bid?b:{...b,...data})})}))}
             onAddQuest={(sid,bid)=>setModal({type:'addQuest',systemId:sid,blockId:bid})}
             onQuestClick={(quest,systemId,blockId,isActive)=>setQuestDetail({quest,systemId,blockId,isActive})}
+            onMoveBlock={moveBlock}
+            onMoveQuest={moveQuest}
+            onDelQuest={(sid,bid,qid)=>{delQuest(sid,bid,qid);if(selBlock===bid)setSelBlock(bid);}}
           />
         )}
         {tab==='graph' && (
@@ -976,9 +1015,10 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
   const cancel = () => setEditField(null);
   const save = (field, v) => {
     setEditField(null);
-    const d = { title: sys.title, description: sys.description || '' };
+    const d = { title: sys.title, description: sys.description || '', reward: sys.reward || 0 };
     if (field === 'title') { if (!v.trim()) return; d.title = v.trim(); }
-    if (field === 'desc') d.description = v;
+    if (field === 'desc')   d.description = v;
+    if (field === 'reward') d.reward = parseInt(v) || 0;
     onSaveSystem(d);
   };
   const ib = { background:'transparent', border:'none', outline:'none', padding:0 };
@@ -1010,26 +1050,84 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
         )}
         <button className="ic-btn" title="Удалить систему" onClick={e=>{e.stopPropagation();onDelSystem();}}>✕</button>
       </div>
+      {editField==='reward' ? (
+        <div style={{display:'flex',alignItems:'center',gap:'6px',marginTop:'2px'}}>
+          <input autoFocus type="number" min="0" value={val} onChange={e=>setVal(e.target.value)}
+            onBlur={()=>save('reward',val)}
+            onKeyDown={e=>{ if(e.key==='Enter') save('reward',val); if(e.key==='Escape') cancel(); }}
+            style={{...ib, width:'60px', fontFamily:'var(--hud)', fontSize:'10px', color:'var(--gld)', letterSpacing:'1px', borderBottom:'1px solid var(--pur)'}} />
+          <span style={{fontFamily:'var(--hud)',fontSize:'10px',color:'var(--gld)',letterSpacing:'1px'}}>✦ за систему</span>
+        </div>
+      ) : !sys.completed && (
+        <div onClick={()=>start('reward', String(sys.reward||0))}
+          style={{display:'inline-flex',alignItems:'center',gap:'4px',fontFamily:'var(--hud)',fontSize:'10px',
+            letterSpacing:'1px',cursor:'text',alignSelf:'flex-start',
+            color:(sys.reward||0)>0?'var(--gld)':'rgba(88,100,120,0.4)',
+            background:(sys.reward||0)>0?'var(--gld2)':'transparent',
+            border:'1px dashed '+((sys.reward||0)>0?'rgba(148,234,255,.2)':'rgba(88,100,120,0.2)'),
+            borderRadius:'4px', padding:'2px 8px', marginTop:'2px'}}>
+          {(sys.reward||0)>0 ? `⭐ +${sys.reward} ✦ за систему` : '+ Награда за систему'}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── BLOCKS VIEW ──
-function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick }) {
+function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick, onMoveBlock, onMoveQuest, onDelQuest }) {
   const activeSystemId = activeSystem?.id;
-  // Find selected block across all systems
   let selData = null, selSystemId = null;
   for (const sys of systems) {
     const b = sys.blocks.find(b=>b.id===selBlock);
     if (b) { selData = b; selSystemId = sys.id; break; }
   }
-  // Scroll to highlighted system when navigating from graph
+  // Scroll to highlighted system from graph
   const sysRefs = React.useRef({});
   React.useEffect(() => {
-    if (selSystem && sysRefs.current[selSystem]) {
-      sysRefs.current[selSystem].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+    if (selSystem && sysRefs.current[selSystem])
+      sysRefs.current[selSystem].scrollIntoView({ behavior:'smooth', block:'nearest' });
   }, [selSystem]);
+
+  // ── DnD state ──
+  const dndRef = React.useRef(null); // { type:'block'|'quest', id, fromSysId, fromBlockId }
+  const [dndOver, setDndOver] = React.useState(null); // { kind:'sys'|'blk'|'trash', id }
+  const [dndActive, setDndActive] = React.useState(false);
+  const [expanded, setExpanded] = React.useState({}); // blockId → bool
+
+  const dndStart = (e, info) => {
+    dndRef.current = info;
+    setDndActive(true);
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
+  };
+  const dndEnd = () => { dndRef.current = null; setDndActive(false); setDndOver(null); };
+  const dndOverSys = (e, sysId) => {
+    if (!dndRef.current) return;
+    if (dndRef.current.type==='block' || dndRef.current.type==='quest') { e.preventDefault(); setDndOver({kind:'sys',id:sysId}); }
+  };
+  const dndOverBlk = (e, blkId) => {
+    if (dndRef.current?.type==='quest') { e.preventDefault(); e.stopPropagation(); setDndOver({kind:'blk',id:blkId}); }
+    else if (dndRef.current?.type==='block') { e.preventDefault(); e.stopPropagation(); } // allow pass-through to sys
+  };
+  const dropOnSys = (e, toSysId) => {
+    e.preventDefault(); setDndOver(null);
+    const d = dndRef.current; if (!d) return;
+    if (d.type==='block') onMoveBlock(d.fromSysId, d.id, toSysId);
+    dndRef.current = null; setDndActive(false);
+  };
+  const dropOnBlk = (e, toSysId, toBlkId) => {
+    e.preventDefault(); e.stopPropagation(); setDndOver(null);
+    const d = dndRef.current; if (!d) return;
+    if (d.type==='quest') onMoveQuest(d.fromSysId, d.fromBlockId, d.id, toSysId, toBlkId);
+    dndRef.current = null; setDndActive(false);
+  };
+  const dropTrash = (e) => {
+    e.preventDefault(); setDndOver(null);
+    const d = dndRef.current; if (!d) return;
+    if (d.type==='block') onDelBlock(d.fromSysId, d.id);
+    if (d.type==='quest') onDelQuest(d.fromSysId, d.fromBlockId, d.id);
+    dndRef.current = null; setDndActive(false);
+  };
 
   return (
     <div className="bv-layout">
@@ -1051,23 +1149,31 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
           const isActive = sys.id === activeSystemId;
           const isLocked = !sys.completed && !isActive;
           const isSelFromGraph = sys.id === selSystem;
+          const overSys = dndOver?.kind==='sys' && dndOver.id===sys.id;
           return (
             <div key={sys.id} ref={el => sysRefs.current[sys.id] = el}
-              style={isSelFromGraph ? {borderRadius:'8px', outline:'1px solid rgba(15,168,245,0.45)', marginBottom:'6px'} : {}}>
-              <SystemHeader
-                sys={sys}
-                isActive={isActive}
-                isLocked={isLocked}
-                onAddBlock={()=>onAddBlock(sys.id)}
-                onDelSystem={()=>onDelSystem(sys.id)}
-                onSaveSystem={data=>onSaveSystem(sys.id,data)}
-              />
+              style={isSelFromGraph ? {borderRadius:'8px', outline:'1px solid rgba(15,168,245,0.45)', marginBottom:'6px'} : {}}
+              onDragOver={e=>dndOverSys(e,sys.id)}
+              onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setDndOver(null); }}
+              onDrop={e=>dropOnSys(e,sys.id)}>
+              <div style={overSys ? {background:'rgba(15,168,245,0.1)',borderRadius:'6px',transition:'background .15s'} : {}}>
+                <SystemHeader
+                  sys={sys}
+                  isActive={isActive}
+                  isLocked={isLocked}
+                  onAddBlock={()=>onAddBlock(sys.id)}
+                  onDelSystem={()=>onDelSystem(sys.id)}
+                  onSaveSystem={data=>onSaveSystem(sys.id,data)}
+                />
+              </div>
               {sys.blocks.map((b) => {
                 const blockActive = isActive;
                 const blockLocked = isLocked;
                 const done = b.quests.filter(q=>q.done).length;
                 const total = b.quests.length;
                 const pct = total > 0 ? (done/total)*100 : 0;
+                const isExpanded = !!expanded[b.id];
+                const overBlk = dndOver?.kind==='blk' && dndOver.id===b.id;
                 let cls = 'blk-card';
                 if (b.id===selBlock) cls+=' blk-sel';
                 if (blockActive && !b.completed) cls+=' blk-active';
@@ -1076,10 +1182,19 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
 
                 return (
                   <div key={b.id} className={cls}
-                    style={{marginLeft:'12px',marginBottom:'6px',cursor:blockLocked?'not-allowed':'pointer'}}
-                    onClick={()=>!blockLocked&&setSelBlock(b.id)}>
+                    draggable={!blockLocked}
+                    style={{marginLeft:'12px',marginBottom:'6px',cursor:blockLocked?'not-allowed':'pointer',
+                      outline: overBlk ? '1px dashed rgba(15,168,245,0.6)' : 'none',
+                      opacity: dndActive && dndRef.current?.id===b.id && dndRef.current?.type==='block' ? 0.4 : 1}}
+                    onDragStart={e=>!blockLocked&&dndStart(e,{type:'block',id:b.id,fromSysId:sys.id})}
+                    onDragEnd={dndEnd}
+                    onDragOver={e=>dndOverBlk(e,b.id)}
+                    onDrop={e=>dropOnBlk(e,sys.id,b.id)}
+                    onClick={()=>!blockLocked&&!dndActive&&setSelBlock(b.id)}>
                     <div className="blk-hdr">
-                      <span className="blk-ic">{b.completed?'✅':blockActive?'🌍':'🔒'}</span>
+                      <span className="blk-ic" style={{cursor:blockLocked?'default':'grab'}}>
+                        {b.completed?'✅':blockActive?'🌍':'🔒'}
+                      </span>
                       <span className="blk-name">{b.title}</span>
                       {!blockLocked && !b.completed && (
                         <button className="ic-btn add" title="Добавить задание" onClick={e=>{e.stopPropagation();onAddQuest(sys.id,b.id);}}>＋</button>
@@ -1088,8 +1203,28 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
                     </div>
                     {total > 0 && (
                       <>
-                        <div className="blk-prog-txt">{done} / {total} задания</div>
+                        <div className="blk-prog-txt" style={{cursor:'pointer',userSelect:'none'}}
+                          onClick={e=>{e.stopPropagation();setExpanded(p=>({...p,[b.id]:!p[b.id]}));}}>
+                          {done} / {total} задания {isExpanded?'▴':'▾'}
+                        </div>
                         <div className="blk-progbar"><div className="blk-progfill" style={{width:`${pct}%`}} /></div>
+                        {isExpanded && (
+                          <div style={{marginTop:'6px',display:'flex',flexDirection:'column',gap:'3px'}}>
+                            {b.quests.map(q => (
+                              <div key={q.id} draggable
+                                onDragStart={e=>{ e.stopPropagation(); dndStart(e,{type:'quest',id:q.id,fromSysId:sys.id,fromBlockId:b.id}); }}
+                                onDragEnd={dndEnd}
+                                style={{display:'flex',alignItems:'center',gap:'5px',padding:'3px 6px',
+                                  borderRadius:'4px',fontSize:'12px',cursor:'grab',userSelect:'none',
+                                  background: dndActive&&dndRef.current?.id===q.id&&dndRef.current?.type==='quest' ? 'rgba(15,168,245,0.05)' : 'rgba(4,8,15,0.3)',
+                                  opacity: dndActive&&dndRef.current?.id===q.id&&dndRef.current?.type==='quest' ? 0.4 : 1,
+                                  border:'1px solid rgba(26,45,74,0.6)'}}>
+                                <span style={{fontSize:'10px',flexShrink:0}}>{q.done?'✅':'○'}</span>
+                                <span style={{color:q.done?'var(--mut)':'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1098,6 +1233,20 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
             </div>
           );
         })}
+
+        {/* Trash drop zone — visible during drag */}
+        {dndActive && (
+          <div onDragOver={e=>{e.preventDefault();setDndOver({kind:'trash'});}}
+            onDragLeave={()=>setDndOver(null)}
+            onDrop={dropTrash}
+            style={{marginTop:'12px',padding:'12px',borderRadius:'8px',textAlign:'center',
+              border:'1px dashed '+(dndOver?.kind==='trash'?'var(--red)':'rgba(239,68,68,0.3)'),
+              background:dndOver?.kind==='trash'?'rgba(239,68,68,0.08)':'transparent',
+              color:dndOver?.kind==='trash'?'var(--red)':'rgba(239,68,68,0.45)',
+              fontFamily:'var(--hud)',fontSize:'11px',letterSpacing:'1px',transition:'all .15s'}}>
+            🗑 УДАЛИТЬ
+          </div>
+        )}
       </div>
 
       {/* Detail */}
@@ -1536,8 +1685,9 @@ const FORMS = {
   addSystem: {
     title:'Новая Система',
     fields:[
-      {k:'title',       label:'Название',  type:'text', req:true},
-      {k:'description', label:'Описание',  type:'textarea'},
+      {k:'title',       label:'Название',           type:'text', req:true},
+      {k:'description', label:'Описание',            type:'textarea'},
+      {k:'reward',      label:'Награда за систему (✦)', type:'number', ph:'0'},
     ]
   },
   addBlock: {
