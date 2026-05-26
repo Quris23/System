@@ -786,10 +786,6 @@ function App({ session }) {
       const nb = { id:uid(), title:data.title, description:data.description||'', reward:parseInt(data.reward)||0, completed:false, quests:[] };
       setSt(p => ({ ...p, blocks:[...p.blocks, nb] }));
       setSelBlock(nb.id);
-    } else if (type === 'editBlock') {
-      setSt(p => ({...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
-        ...b, title:data.title||b.title, description:data.description||'', reward:parseInt(data.reward)||0,
-      })}));
     } else if (type === 'addQuest') {
       setSt(p => ({ ...p, blocks:p.blocks.map(b => b.id!==modal.blockId ? b : {
         ...b, quests:[...b.quests, {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', reward:parseInt(data.reward)||25, done:false}]
@@ -902,7 +898,7 @@ function App({ session }) {
             onAddBlock={()=>setModal({type:'addBlock'})}
             onAddQuest={bid=>setModal({type:'addQuest', blockId:bid})}
             onDelBlock={delBlock}
-            onEditBlock={b=>setModal({type:'editBlock', blockId:b.id, data:{title:b.title, description:b.description, reward:String(b.reward||0)}})}
+            onSaveBlock={(blockId,data)=>setSt(p=>({...p,blocks:p.blocks.map(b=>b.id!==blockId?b:{...b,...data})}))}
             onQuestClick={(quest,blockId,isActive)=>setQuestDetail({quest,blockId,isActive})}
           />
         )}
@@ -942,7 +938,7 @@ function App({ session }) {
 }
 
 // ── BLOCKS VIEW ──
-function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, onAddQuest, onDelBlock, onQuestClick, onEditBlock }) {
+function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, onAddQuest, onDelBlock, onQuestClick, onSaveBlock }) {
   const selData = blocks.find(b=>b.id===selBlock);
   const activeId = activeBlock?.id;
 
@@ -1006,7 +1002,7 @@ function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, on
             isActive={selData.id === activeId}
             onAddQuest={()=>onAddQuest(selData.id)}
             onQuestClick={(q)=>onQuestClick(q, selData.id, selData.id===activeId)}
-            onEditBlock={()=>onEditBlock(selData)}
+            onSaveBlock={data=>onSaveBlock(selData.id, data)}
           />
         )}
       </div>
@@ -1014,26 +1010,82 @@ function BlocksView({ blocks, activeBlock, selBlock, setSelBlock, onAddBlock, on
   );
 }
 
-function BlockDetail({ block, isActive, onAddQuest, onQuestClick, onEditBlock }) {
-  const isLocked = !block.completed && !isActive;
+function BlockDetail({ block, isActive, onAddQuest, onQuestClick, onSaveBlock }) {
+  const [editField, setEditField] = useState(null);
+  const [val, setVal] = useState('');
   const statusCls = block.completed ? 'st-done' : isActive ? 'st-active' : 'st-locked';
   const statusTxt = block.completed ? 'COMPLETED' : isActive ? 'ACTIVE' : 'LOCKED';
+
+  useEffect(() => { setEditField(null); }, [block.id]);
+
+  const start = (field, cur) => { setEditField(field); setVal(String(cur)); };
+  const cancel = () => setEditField(null);
+  const save = (field, v) => {
+    setEditField(null);
+    const d = { title:block.title, description:block.description||'', reward:block.reward||0 };
+    if (field==='title') { if (!v.trim()) return; d.title=v.trim(); }
+    if (field==='desc')   d.description=v;
+    if (field==='reward') d.reward=parseInt(v)||0;
+    onSaveBlock(d);
+  };
+
+  const inputBase = { background:'transparent', border:'none', outline:'none', width:'100%', padding:0 };
 
   return (
     <>
       <div className="bdet-hdr">
         <div style={{flex:1,minWidth:0}}>
-          <div className="bdet-title">{block.title}</div>
-          {block.description && <div className="bdet-desc">{block.description}</div>}
-          {(block.reward||0) > 0 && (
-            <div style={{display:'inline-flex',alignItems:'center',gap:'5px',marginTop:'8px',fontFamily:'var(--hud)',fontSize:'11px',color:'var(--gld)',background:'var(--gld2)',border:'1px solid rgba(148,234,255,.25)',borderRadius:'4px',padding:'3px 10px',letterSpacing:'1px'}}>
-              🏆 +{block.reward} ✦ за блок
+
+          {editField==='title' ? (
+            <input autoFocus value={val} onChange={e=>setVal(e.target.value)}
+              onBlur={()=>save('title',val)}
+              onKeyDown={e=>{ if(e.key==='Enter') save('title',val); if(e.key==='Escape') cancel(); }}
+              style={{...inputBase, fontFamily:'var(--hud)', fontSize:'22px', fontWeight:900, letterSpacing:'1px', color:'var(--txt)', borderBottom:'1px solid var(--pur)'}} />
+          ) : (
+            <div className="bdet-title" onClick={()=>start('title', block.title)}
+              title="Нажмите чтобы изменить"
+              style={{cursor:'text'}}>
+              {block.title}
             </div>
           )}
+
+          {editField==='desc' ? (
+            <textarea autoFocus value={val} onChange={e=>setVal(e.target.value)}
+              onBlur={()=>save('desc',val)}
+              onKeyDown={e=>{ if(e.key==='Escape') cancel(); }}
+              rows={Math.max(2, val.split('\n').length+1)}
+              style={{...inputBase, resize:'none', fontFamily:'var(--body)', fontSize:'15px', fontWeight:500, color:'var(--mut2)', lineHeight:1.5, marginTop:'8px', borderBottom:'1px solid var(--pur)', display:'block'}} />
+          ) : (
+            <div className="bdet-desc" onClick={()=>start('desc', block.description||'')}
+              title="Нажмите чтобы изменить"
+              style={{cursor:'text', marginTop:'8px', minHeight:'20px', color:block.description?'var(--mut2)':'rgba(88,100,120,0.35)'}}>
+              {block.description || 'Добавить описание...'}
+            </div>
+          )}
+
+          {editField==='reward' ? (
+            <div style={{display:'flex',alignItems:'center',gap:'6px',marginTop:'8px'}}>
+              <input autoFocus type="number" min="0" value={val} onChange={e=>setVal(e.target.value)}
+                onBlur={()=>save('reward',val)}
+                onKeyDown={e=>{ if(e.key==='Enter') save('reward',val); if(e.key==='Escape') cancel(); }}
+                style={{...inputBase, width:'70px', fontFamily:'var(--hud)', fontSize:'11px', color:'var(--gld)', letterSpacing:'1px', borderBottom:'1px solid var(--pur)'}} />
+              <span style={{fontFamily:'var(--hud)',fontSize:'11px',color:'var(--gld)',letterSpacing:'1px'}}>✦ за блок</span>
+            </div>
+          ) : (
+            <div onClick={()=>start('reward', String(block.reward||0))}
+              title="Нажмите чтобы изменить"
+              style={{display:'inline-flex',alignItems:'center',gap:'5px',marginTop:'8px',fontFamily:'var(--hud)',fontSize:'11px',letterSpacing:'1px',cursor:'text',
+                color:(block.reward||0)>0?'var(--gld)':'rgba(88,100,120,0.45)',
+                background:(block.reward||0)>0?'var(--gld2)':'transparent',
+                border:'1px dashed '+((block.reward||0)>0?'rgba(148,234,255,.25)':'rgba(88,100,120,0.25)'),
+                borderRadius:'4px', padding:'3px 10px'}}>
+              {(block.reward||0)>0 ? `🏆 +${block.reward} ✦ за блок` : '+ Награда за блок'}
+            </div>
+          )}
+
         </div>
         <div className="bdet-actions">
           <span className={`status-tag ${statusCls}`}>{statusTxt}</span>
-          <button className="btn btn-ghost" style={{padding:'5px 12px',fontSize:'11px'}} onClick={onEditBlock}>✎ ИЗМЕНИТЬ</button>
         </div>
       </div>
 
@@ -1287,14 +1339,7 @@ const FORMS = {
       {k:'reward',      label:'Награда за блок (✦)', type:'number', ph:'0'},
     ]
   },
-  editBlock: {
-    title:'Изменить Блок',
-    fields:[
-      {k:'title',       label:'Название',          type:'text', req:true},
-      {k:'description', label:'Описание',           type:'textarea'},
-      {k:'reward',      label:'Награда за блок (✦)', type:'number', ph:'0'},
-    ]
-  },
+
   addQuest: {
     title:'Новое Задание',
     fields:[
