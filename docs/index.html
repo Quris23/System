@@ -1040,25 +1040,26 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
       opacity: sys.completed ? 0.65 : 1,
       marginBottom:'4px',
     }}>
-      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+      <div style={{display:'flex',alignItems:'center',gap:'6px',minWidth:0}}>
         <span style={{fontSize:'14px',flexShrink:0}}>{ic}</span>
         {editField==='title' ? (
           <input autoFocus value={val} onChange={e=>setVal(e.target.value)}
             onBlur={()=>save('title',val)}
             onKeyDown={e=>{ if(e.key==='Enter') save('title',val); if(e.key==='Escape') cancel(); }}
-            style={{...ib, fontFamily:'var(--hud)', fontSize:'12px', fontWeight:700, letterSpacing:'1px', color:'var(--txt)', flex:1, borderBottom:'1px solid var(--pur)'}} />
+            style={{...ib, fontFamily:'var(--hud)', fontSize:'12px', fontWeight:700, letterSpacing:'1px', color:'var(--txt)', flex:1, minWidth:0, borderBottom:'1px solid var(--pur)'}} />
         ) : (
           <span onClick={()=>!sys.completed&&start('title',sys.title)}
-            style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'1px',flex:1,
+            style={{fontFamily:'var(--hud)',fontSize:'12px',fontWeight:700,letterSpacing:'1px',
+              flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
               cursor:sys.completed?'default':'text', color: isActive ? 'var(--pur)' : sys.completed ? 'var(--grn)' : 'var(--mut2)'}}>
             {sys.title}
           </span>
         )}
-        <span className={`status-tag ${statusCls}`} style={{fontSize:'8px',padding:'2px 6px'}}>{statusTxt}</span>
+        <span className={`status-tag ${statusCls}`} style={{fontSize:'8px',padding:'2px 6px',flexShrink:0}}>{statusTxt}</span>
         {!sys.completed && !isLocked && (
-          <button className="ic-btn add" title="Добавить блок" onClick={e=>{e.stopPropagation();onAddBlock();}}>＋</button>
+          <button className="ic-btn add" title="Добавить блок" style={{flexShrink:0}} onClick={e=>{e.stopPropagation();onAddBlock();}}>＋</button>
         )}
-        <button className="ic-btn" title="Удалить систему" onClick={e=>{e.stopPropagation();onDelSystem();}}>✕</button>
+        <button className="ic-btn" title="Удалить систему" style={{flexShrink:0}} onClick={e=>{e.stopPropagation();onDelSystem();}}>✕</button>
       </div>
       {editField==='reward' ? (
         <div style={{display:'flex',alignItems:'center',gap:'6px',marginTop:'2px'}}>
@@ -1066,7 +1067,7 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
             onBlur={()=>save('reward',val)}
             onKeyDown={e=>{ if(e.key==='Enter') save('reward',val); if(e.key==='Escape') cancel(); }}
             style={{...ib, width:'60px', fontFamily:'var(--hud)', fontSize:'10px', color:'var(--gld)', letterSpacing:'1px', borderBottom:'1px solid var(--pur)'}} />
-          <span style={{fontFamily:'var(--hud)',fontSize:'10px',color:'var(--gld)',letterSpacing:'1px'}}>✦ за систему</span>
+          <span style={{fontFamily:'var(--hud)',fontSize:'10px',color:'var(--gld)',letterSpacing:'1px'}}>за систему</span>
         </div>
       ) : !sys.completed && (
         <div onClick={()=>start('reward', String(sys.reward||0))}
@@ -1076,7 +1077,7 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
             background:(sys.reward||0)>0?'var(--gld2)':'transparent',
             border:'1px dashed '+((sys.reward||0)>0?'rgba(148,234,255,.2)':'rgba(88,100,120,0.2)'),
             borderRadius:'4px', padding:'2px 8px', marginTop:'2px'}}>
-          {(sys.reward||0)>0 ? `⭐ +${sys.reward} ✦ за систему` : '+ Награда за систему'}
+          {(sys.reward||0)>0 ? `⭐ +${sys.reward} за систему` : '+ Награда за систему'}
         </div>
       )}
     </div>
