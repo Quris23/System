@@ -901,6 +901,18 @@ function App({ session }) {
     });
   };
 
+  const reorderQuests = (sysId, blockId, questId, afterIdx) => {
+    setSt(p => ({...p, systems: p.systems.map(s => s.id!==sysId ? s : {...s, blocks: s.blocks.map(b => {
+      if(b.id!==blockId) return b;
+      const qs=[...b.quests];
+      const fi=qs.findIndex(q=>q.id===questId); if(fi<0) return b;
+      const [item]=qs.splice(fi,1);
+      const ti=fi<afterIdx?afterIdx-1:afterIdx;
+      qs.splice(Math.max(0,Math.min(ti,qs.length)),0,item);
+      return {...b,quests:qs};
+    })})}));
+  };
+
   const level = getLvl(st.player.xp);
   const xpS = xpForLvl(level);
   const xpN = xpForNext(level);
@@ -988,6 +1000,7 @@ function App({ session }) {
             onQuestClick={(quest,systemId,blockId,isActive)=>setQuestDetail({quest,systemId,blockId,isActive})}
             onMoveBlock={moveBlock}
             onMoveQuest={moveQuest}
+            onReorderQuests={reorderQuests}
             onDelQuest={(sid,bid,qid)=>{delQuest(sid,bid,qid);if(selBlock===bid)setSelBlock(bid);}}
           />
         )}
@@ -1100,7 +1113,7 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
 }
 
 // ── BLOCKS VIEW ──
-function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick, onMoveBlock, onMoveQuest, onDelQuest }) {
+function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick, onMoveBlock, onMoveQuest, onReorderQuests, onDelQuest }) {
   const activeSystemId = activeSystem?.id;
   let selData = null, selSystemId = null;
   for (const sys of systems) {
@@ -1119,6 +1132,7 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
   const [dndOver, setDndOver] = React.useState(null); // { kind:'sys'|'blk'|'trash', id }
   const [dndActive, setDndActive] = React.useState(false);
   const [expanded, setExpanded] = React.useState({}); // blockId → bool
+  const [questDrop, setQuestDrop] = React.useState(null); // {blockId, afterIdx}
 
   const dndStart = (e, info) => {
     dndRef.current = info;
@@ -1235,20 +1249,49 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
                         </div>
                         <div className="blk-progbar"><div className="blk-progfill" style={{width:`${pct}%`}} /></div>
                         {isExpanded && (
-                          <div style={{marginTop:'6px',display:'flex',flexDirection:'column',gap:'3px'}}>
-                            {b.quests.map(q => (
-                              <div key={q.id} draggable
-                                onDragStart={e=>{ e.stopPropagation(); dndStart(e,{type:'quest',id:q.id,fromSysId:sys.id,fromBlockId:b.id}); }}
-                                onDragEnd={dndEnd}
-                                style={{display:'flex',alignItems:'center',gap:'5px',padding:'3px 6px',
-                                  borderRadius:'4px',fontSize:'12px',cursor:'grab',userSelect:'none',
-                                  background: dndActive&&dndRef.current?.id===q.id&&dndRef.current?.type==='quest' ? 'rgba(15,168,245,0.05)' : 'rgba(4,8,15,0.3)',
-                                  opacity: dndActive&&dndRef.current?.id===q.id&&dndRef.current?.type==='quest' ? 0.4 : 1,
-                                  border:'1px solid rgba(26,45,74,0.6)'}}>
-                                <span style={{fontSize:'10px',flexShrink:0}}>{q.done?'✅':'○'}</span>
-                                <span style={{color:q.done?'var(--mut)':'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title}</span>
-                              </div>
-                            ))}
+                          <div style={{marginTop:'6px',display:'flex',flexDirection:'column',gap:'0'}}>
+                            {b.quests.map((q, qi) => {
+                              const isDragging=dndActive&&dndRef.current?.id===q.id&&dndRef.current?.type==='quest';
+                              const showLineBefore=questDrop?.blockId===b.id&&questDrop?.afterIdx===qi;
+                              const showLineAfter=questDrop?.blockId===b.id&&questDrop?.afterIdx===qi+1&&qi===b.quests.length-1;
+                              return (
+                                <React.Fragment key={q.id}>
+                                  {showLineBefore && <div style={{height:'2px',borderRadius:'1px',background:'var(--pur)',margin:'1px 4px',boxShadow:'0 0 6px var(--pur)'}}/>}
+                                  <div draggable
+                                    onDragStart={e=>{ e.stopPropagation(); dndStart(e,{type:'quest',id:q.id,fromSysId:sys.id,fromBlockId:b.id}); }}
+                                    onDragEnd={e=>{ dndEnd(e); setQuestDrop(null); }}
+                                    onDragOver={e=>{
+                                      e.preventDefault(); e.stopPropagation();
+                                      if(dndRef.current?.type!=='quest') return;
+                                      const r=e.currentTarget.getBoundingClientRect();
+                                      const after=e.clientY>r.top+r.height/2;
+                                      setQuestDrop({blockId:b.id, afterIdx:qi+(after?1:0)});
+                                    }}
+                                    onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setQuestDrop(null); }}
+                                    onDrop={e=>{
+                                      e.preventDefault(); e.stopPropagation();
+                                      const d=dndRef.current; if(!d||d.type!=='quest') return;
+                                      if(d.fromBlockId===b.id&&questDrop?.blockId===b.id){
+                                        onReorderQuests(sys.id, b.id, d.id, questDrop.afterIdx);
+                                      } else {
+                                        onMoveQuest(d.fromSysId, d.fromBlockId, d.id, sys.id, b.id);
+                                      }
+                                      setQuestDrop(null); dndRef.current=null; setDndActive(false);
+                                    }}
+                                    style={{display:'flex',alignItems:'center',gap:'5px',padding:'3px 6px',
+                                      marginBottom:'3px',borderRadius:'4px',fontSize:'12px',
+                                      cursor:'grab',userSelect:'none',
+                                      background:isDragging?'rgba(15,168,245,0.05)':'rgba(4,8,15,0.3)',
+                                      opacity:isDragging?0.4:1,
+                                      border:'1px solid rgba(26,45,74,0.6)',transition:'opacity .15s'}}>
+                                    <span style={{fontSize:'10px',flexShrink:0,color:'var(--mut)'}}>{isDragging?'⠿':'⠿'}</span>
+                                    <span style={{fontSize:'10px',flexShrink:0}}>{q.done?'✅':'○'}</span>
+                                    <span style={{color:q.done?'var(--mut)':'var(--txt)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{q.title}</span>
+                                  </div>
+                                  {showLineAfter && <div style={{height:'2px',borderRadius:'1px',background:'var(--pur)',margin:'1px 4px',boxShadow:'0 0 6px var(--pur)'}}/>}
+                                </React.Fragment>
+                              );
+                            })}
                           </div>
                         )}
                       </>
@@ -1974,8 +2017,12 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
           const d=Math.sqrt(dx*dx+dy*dy)||1;
           // repulsion between all stars
           fx+=dx/d*Math.min(REP_K/(d*d),350); fy+=dy/d*Math.min(REP_K/(d*d),350);
-          // spring attraction only between chain neighbors
-          if(isNeighbor(i,j)&&d>IDEAL){const s=(d-IDEAL)*SPRING_K; fx-=dx/d*s; fy-=dy/d*s;}
+          // spring attraction only between chain neighbors — ideal dist grows with planet count
+          if(isNeighbor(i,j)){
+            const bi=(systems[i]?.blocks||[]).length, bj=(systems[j]?.blocks||[]).length;
+            const idealDist=180+(bi+bj)*45;
+            if(d>idealDist){const s=(d-idealDist)*SPRING_K; fx-=dx/d*s; fy-=dy/d*s;}
+          }
         }
         fx+=(w/2-stars[i].x)*0.0004; fy+=(h/2-stars[i].y)*0.0004;
         starVels[i].vx=(starVels[i].vx+fx)*DAMP; starVels[i].vy=(starVels[i].vy+fy)*DAMP;
