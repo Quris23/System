@@ -2103,9 +2103,9 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
         const isAct=sys&&sys.id===activeId;
         if(!satAngles[blk.id]){
           satAngles[blk.id]=blk.quests.map((_,qi)=>(qi/Math.max(blk.quests.length,1))*Math.PI*2);
-          satSpeeds[blk.id]=blk.quests.map((_,qi)=>0.026+qi*0.006);
+          satSpeeds[blk.id]=blk.quests.map(()=>0.018);
         }
-        while(satAngles[blk.id].length<blk.quests.length){satAngles[blk.id].push(Math.random()*Math.PI*2);satSpeeds[blk.id].push(0.026+satAngles[blk.id].length*0.006);}
+        while(satAngles[blk.id].length<blk.quests.length){satAngles[blk.id].push(Math.random()*Math.PI*2);satSpeeds[blk.id].push(0.018);}
         satAngles[blk.id].length=blk.quests.length; satSpeeds[blk.id].length=blk.quests.length;
         satPos[blk.id]=blk.quests.map((q,qi)=>{
           satAngles[blk.id][qi]+=satSpeeds[blk.id][qi];
