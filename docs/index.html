@@ -901,6 +901,18 @@ function App({ session }) {
     });
   };
 
+  const reorderBlocks = (sysId, blockId, afterIdx) => {
+    setSt(p => ({...p, systems: p.systems.map(s => {
+      if(s.id!==sysId) return s;
+      const bs=[...s.blocks];
+      const fi=bs.findIndex(b=>b.id===blockId); if(fi<0) return s;
+      const [item]=bs.splice(fi,1);
+      const ti=fi<afterIdx?afterIdx-1:afterIdx;
+      bs.splice(Math.max(0,Math.min(ti,bs.length)),0,item);
+      return {...s,blocks:bs};
+    })}));
+  };
+
   const reorderQuests = (sysId, blockId, questId, afterIdx) => {
     setSt(p => ({...p, systems: p.systems.map(s => s.id!==sysId ? s : {...s, blocks: s.blocks.map(b => {
       if(b.id!==blockId) return b;
@@ -999,6 +1011,7 @@ function App({ session }) {
             onAddQuest={(sid,bid)=>setModal({type:'addQuest',systemId:sid,blockId:bid})}
             onQuestClick={(quest,systemId,blockId,isActive)=>setQuestDetail({quest,systemId,blockId,isActive})}
             onMoveBlock={moveBlock}
+            onReorderBlocks={reorderBlocks}
             onMoveQuest={moveQuest}
             onReorderQuests={reorderQuests}
             onDelQuest={(sid,bid,qid)=>{delQuest(sid,bid,qid);if(selBlock===bid)setSelBlock(bid);}}
@@ -1113,7 +1126,7 @@ function SystemHeader({ sys, isActive, isLocked, onAddBlock, onDelSystem, onSave
 }
 
 // ── BLOCKS VIEW ──
-function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick, onMoveBlock, onMoveQuest, onReorderQuests, onDelQuest }) {
+function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, setSelSystem, onAddSystem, onDelSystem, onSaveSystem, onAddBlock, onDelBlock, onSaveBlock, onAddQuest, onQuestClick, onMoveBlock, onReorderBlocks, onMoveQuest, onReorderQuests, onDelQuest }) {
   const activeSystemId = activeSystem?.id;
   let selData = null, selSystemId = null;
   for (const sys of systems) {
@@ -1133,6 +1146,7 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
   const [dndActive, setDndActive] = React.useState(false);
   const [expanded, setExpanded] = React.useState({}); // blockId → bool
   const [questDrop, setQuestDrop] = React.useState(null); // {blockId, afterIdx}
+  const [blockDrop, setBlockDrop] = React.useState(null); // {sysId, afterIdx}
 
   const dndStart = (e, info) => {
     dndRef.current = info;
@@ -1206,7 +1220,7 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
                   onSaveSystem={data=>onSaveSystem(sys.id,data)}
                 />
               </div>
-              {sys.blocks.map((b) => {
+              {sys.blocks.map((b, bi) => {
                 const blockActive = isActive;
                 const blockLocked = isLocked;
                 const done = b.quests.filter(q=>q.done).length;
@@ -1214,6 +1228,9 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
                 const pct = total > 0 ? (done/total)*100 : 0;
                 const isExpanded = !!expanded[b.id];
                 const overBlk = dndOver?.kind==='blk' && dndOver.id===b.id;
+                const isDraggingThis = dndActive && dndRef.current?.id===b.id && dndRef.current?.type==='block';
+                const showLineBefore = blockDrop?.sysId===sys.id && blockDrop?.afterIdx===bi;
+                const showLineAfter  = blockDrop?.sysId===sys.id && blockDrop?.afterIdx===bi+1 && bi===sys.blocks.length-1;
                 let cls = 'blk-card';
                 if (b.id===selBlock) cls+=' blk-sel';
                 if (blockActive && !b.completed) cls+=' blk-active';
@@ -1221,15 +1238,38 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
                 if (blockLocked) cls+=' blk-locked';
 
                 return (
-                  <div key={b.id} className={cls}
+                  <React.Fragment key={b.id}>
+                  {showLineBefore && <div style={{height:'2px',borderRadius:'1px',background:'var(--pur)',margin:'2px 12px',boxShadow:'0 0 8px var(--pur)'}}/>}
+                  <div className={cls}
                     draggable={!blockLocked}
                     style={{marginLeft:'12px',marginBottom:'6px',cursor:blockLocked?'not-allowed':'pointer',
                       outline: overBlk ? '1px dashed rgba(15,168,245,0.6)' : 'none',
-                      opacity: dndActive && dndRef.current?.id===b.id && dndRef.current?.type==='block' ? 0.4 : 1}}
-                    onDragStart={e=>!blockLocked&&dndStart(e,{type:'block',id:b.id,fromSysId:sys.id})}
-                    onDragEnd={dndEnd}
-                    onDragOver={e=>dndOverBlk(e,b.id)}
-                    onDrop={e=>dropOnBlk(e,sys.id,b.id)}
+                      opacity: isDraggingThis ? 0.35 : 1, transition:'opacity .15s'}}
+                    onDragStart={e=>!blockLocked&&dndStart(e,{type:'block',id:b.id,fromSysId:sys.id,fromIdx:bi})}
+                    onDragEnd={e=>{ dndEnd(e); setBlockDrop(null); }}
+                    onDragOver={e=>{
+                      e.preventDefault(); e.stopPropagation();
+                      if(dndRef.current?.type!=='block') { dndOverBlk(e,b.id); return; }
+                      const r=e.currentTarget.getBoundingClientRect();
+                      const after=e.clientY>r.top+r.height/2;
+                      setBlockDrop({sysId:sys.id, afterIdx:bi+(after?1:0)});
+                      setDndOver(null);
+                    }}
+                    onDragLeave={e=>{ if(!e.currentTarget.contains(e.relatedTarget)) setBlockDrop(null); }}
+                    onDrop={e=>{
+                      e.preventDefault(); e.stopPropagation();
+                      const d=dndRef.current; if(!d) return;
+                      if(d.type==='block'){
+                        if(d.fromSysId===sys.id && blockDrop?.sysId===sys.id){
+                          onReorderBlocks(sys.id, d.id, blockDrop.afterIdx);
+                        } else {
+                          onMoveBlock(d.fromSysId, d.id, sys.id);
+                        }
+                        setBlockDrop(null); dndRef.current=null; setDndActive(false);
+                      } else {
+                        dropOnBlk(e,sys.id,b.id);
+                      }
+                    }}
                     onClick={()=>!blockLocked&&!dndActive&&setSelBlock(b.id)}>
                     <div className="blk-hdr">
                       <span className="blk-ic" style={{cursor:blockLocked?'default':'grab'}}>
@@ -1297,6 +1337,8 @@ function BlocksView({ systems, activeSystem, selBlock, setSelBlock, selSystem, s
                       </>
                     )}
                   </div>
+                  {showLineAfter && <div style={{height:'2px',borderRadius:'1px',background:'var(--pur)',margin:'2px 12px',boxShadow:'0 0 8px var(--pur)'}}/>}
+                  </React.Fragment>
                 );
               })}
             </div>
