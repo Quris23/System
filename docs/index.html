@@ -2017,10 +2017,12 @@ function GraphView({ systems, activeSystem, onAddSystem, setSelBlock, setSelSyst
           const d=Math.sqrt(dx*dx+dy*dy)||1;
           // repulsion between all stars
           fx+=dx/d*Math.min(REP_K/(d*d),350); fy+=dy/d*Math.min(REP_K/(d*d),350);
-          // spring attraction only between chain neighbors — ideal dist grows with planet count
+          // spring attraction only between chain neighbors
+          // ideal dist = outermost orbit radius of each star + comfortable gap
           if(isNeighbor(i,j)){
-            const bi=(systems[i]?.blocks||[]).length, bj=(systems[j]?.blocks||[]).length;
-            const idealDist=180+(bi+bj)*45;
+            const orbitR=bl=>bl.length>0 ? 140+(bl.length-1)*75+40 : 60;
+            const ri=orbitR(systems[i]?.blocks||[]), rj=orbitR(systems[j]?.blocks||[]);
+            const idealDist=ri+rj+80;
             if(d>idealDist){const s=(d-idealDist)*SPRING_K; fx-=dx/d*s; fy-=dy/d*s;}
           }
         }
