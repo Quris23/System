@@ -23,22 +23,25 @@ def _configured() -> bool:
 
 async def _get_state_by_tg(telegram_id: int) -> tuple[str, dict] | None:
     """
-    Найти запись user_state по telegram_id, хранящемуся в state->player->>telegram_id.
-    Возвращает (user_id, state) или None если не найдено.
+    Найти запись user_state по telegram_id, хранящемуся в player.telegram_id внутри JSONB state.
+    Фильтруем в Python — надёжнее, чем вложенный JSONB-фильтр в URL.
     """
     if not _configured():
         return None
-    url = (
-        f"{SUPABASE_URL}/rest/v1/user_state"
-        f"?state->player->>telegram_id=eq.{telegram_id}"
-        f"&select=user_id,state"
-    )
+    url = f"{SUPABASE_URL}/rest/v1/user_state?select=user_id,state"
     async with aiohttp.ClientSession() as s:
         async with s.get(url, headers=_HEADERS) as r:
             rows = await r.json()
-    if not rows:
+    if not isinstance(rows, list):
         return None
-    return rows[0]["user_id"], rows[0]["state"]
+    tg_id_str = str(telegram_id)
+    for row in rows:
+        state  = row.get("state") or {}
+        player = state.get("player") or {}
+        stored = player.get("telegram_id")
+        if stored is not None and str(stored) == tg_id_str:
+            return row["user_id"], state
+    return None
 
 
 async def get_systems(telegram_id: int) -> list[dict]:
