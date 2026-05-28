@@ -122,6 +122,41 @@ async def mark_quest_done(telegram_id: int, quest_id: str) -> bool:
             return r.status in (200, 204)
 
 
+async def update_quest(telegram_id: int, quest_id: str,
+                       title: str | None = None,
+                       deadline: str | None = None,
+                       reward: int | None = None) -> bool:
+    """Обновить поля квеста или заметки в Supabase."""
+    result = await _get_state_by_tg(telegram_id)
+    if not result:
+        return False
+    user_id, state = result
+
+    updated = False
+    for src_list in [
+        [q for sys in state.get("systems", []) for blk in sys.get("blocks", []) for q in blk.get("quests", [])],
+        state.get("notes", []),
+    ]:
+        for item in src_list:
+            if item.get("id") == quest_id:
+                if title    is not None: item["title"]    = title
+                if deadline is not None: item["deadline"] = deadline[:10]
+                if reward   is not None: item["reward"]   = reward
+                updated = True
+                break
+        if updated:
+            break
+
+    if not updated:
+        return False
+
+    url = f"{SUPABASE_URL}/rest/v1/user_state?user_id=eq.{user_id}"
+    payload = {"state": state, "updated_at": datetime.now(timezone.utc).isoformat()}
+    async with aiohttp.ClientSession() as s:
+        async with s.patch(url, headers=_HEADERS, json=payload) as r:
+            return r.status in (200, 204)
+
+
 async def add_note(telegram_id: int, title: str, deadline: str, reward: int) -> bool:
     """
     Добавить заметку в state.notes (без привязки к системе).

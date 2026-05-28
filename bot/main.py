@@ -24,7 +24,7 @@ from db import (
 )
 from agent import Agent
 from scheduler import run_scheduler
-from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests, add_note, mark_quest_done
+from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests, add_note, mark_quest_done, update_quest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -403,15 +403,38 @@ async def cb_sys_done(cb: CallbackQuery):
 
 # ── Кнопка: Изменить задачу ───────────────────────────────────────────────────
 
+def _sys_task_edit_kb(quest_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"sys_mark_done:{quest_id}")],
+        [
+            InlineKeyboardButton(text="✏️ Текст",  callback_data=f"sys_edit_text:{quest_id}"),
+            InlineKeyboardButton(text="🕐 Время",  callback_data=f"sys_edit_time:{quest_id}"),
+            InlineKeyboardButton(text="💎 Очки",   callback_data=f"sys_edit_pts:{quest_id}"),
+        ],
+    ])
+
+_sys_edit_state: dict[int, dict] = {}   # {user_id: {mode, quest_id}}
+
 @dp.message(F.text == "✏️ Изменить задачу")
 async def btn_edit(msg: Message, state: FSMContext):
     await state.clear()
-    rows = await list_reminders(msg.from_user.id)
-    if not rows:
+    user_id = msg.from_user.id
+    local  = await list_reminders(user_id)
+    system = await get_upcoming_quests(user_id)
+
+    if not local and not system:
         await msg.answer("Нет активных задач.", reply_markup=MAIN_KB)
         return
-    for r in rows[:10]:
+
+    for r in local[:5]:
         await msg.answer(_task_text(r), reply_markup=_task_edit_kb(r["id"]))
+
+    for q in system[:10]:
+        pts = f"+{q['reward']} ✦" if q.get("reward") else "без очков"
+        text = (f"🗓 {q['deadline']}  |  {pts}\n"
+                f"{q['title']}\n"
+                f"<i>{q['system_title']} → {q['block_title']}</i>")
+        await msg.answer(text, reply_markup=_sys_task_edit_kb(q["id"]), parse_mode="HTML")
 
 
 # ── /tasks ────────────────────────────────────────────────────────────────────
@@ -479,17 +502,84 @@ async def cb_edit_pts(cb: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("pts:"))
 async def cb_pts_edit(cb: CallbackQuery):
-    """Обработчик pts: вне FSM — только для редактирования."""
+    """pts: вне FSM — редактирование бот-задачи или SYSTEM-квеста."""
     user_id = cb.from_user.id
+    pts = int(cb.data.split(":")[1])
+
+    # SYSTEM-квест
+    if user_id in _sys_edit_state and _sys_edit_state[user_id]["mode"] == "points":
+        quest_id = _sys_edit_state.pop(user_id)["quest_id"]
+        ok = await update_quest(user_id, quest_id, reward=pts)
+        suffix = " ✅" if ok else " ⚠️ не синхронизировано"
+        await cb.message.edit_text(f"💎 Очки обновлены: +{pts} ✦{suffix}")
+        await cb.message.answer("Что дальше?", reply_markup=MAIN_KB)
+        await cb.answer()
+        return
+
+    # Бот-задача
     if user_id not in _edit_state or _edit_state[user_id]["mode"] != "points":
         return
-    pts     = int(cb.data.split(":")[1])
     task_id = _edit_state.pop(user_id)["task_id"]
     await update_reminder(task_id, points=pts)
     task = await get_reminder(task_id)
     await cb.message.edit_text(f"✅ Очки обновлены: +{pts} ✦\n\n{_task_text(task)}")
     await cb.message.answer("Что дальше?", reply_markup=MAIN_KB)
     await cb.answer()
+
+
+# ── Inline: Редактировать SYSTEM-квест ───────────────────────────────────────
+
+@dp.callback_query(F.data.startswith("sys_mark_done:"))
+async def cb_sys_mark_done(cb: CallbackQuery):
+    quest_id = cb.data.split(":", 1)[1]
+    ok = await mark_quest_done(cb.from_user.id, quest_id)
+    await cb.message.edit_text("✅ Выполнено!" if ok else "⚠️ Не удалось обновить.", reply_markup=None)
+    await cb.answer()
+
+@dp.callback_query(F.data.startswith("sys_edit_text:"))
+async def cb_sys_edit_text(cb: CallbackQuery):
+    quest_id = cb.data.split(":", 1)[1]
+    _sys_edit_state[cb.from_user.id] = {"mode": "text", "quest_id": quest_id}
+    await cb.message.answer("✏️ Введи новый текст:", reply_markup=ReplyKeyboardRemove())
+    await cb.answer()
+
+@dp.callback_query(F.data.startswith("sys_edit_time:"))
+async def cb_sys_edit_time(cb: CallbackQuery):
+    quest_id = cb.data.split(":", 1)[1]
+    _sys_edit_state[cb.from_user.id] = {"mode": "time", "quest_id": quest_id}
+    await cb.message.answer(
+        "🕐 Введи новую дату:\n«завтра в 11», «2026-06-05»",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await cb.answer()
+
+@dp.callback_query(F.data.startswith("sys_edit_pts:"))
+async def cb_sys_edit_pts(cb: CallbackQuery):
+    quest_id = cb.data.split(":", 1)[1]
+    _sys_edit_state[cb.from_user.id] = {"mode": "points", "quest_id": quest_id}
+    await cb.message.answer("💎 Выбери новую сложность:", reply_markup=POINTS_KB)
+    await cb.answer()
+
+
+async def handle_sys_edit(msg: Message):
+    user_id = msg.from_user.id
+    st = _sys_edit_state.pop(user_id)
+    quest_id, mode = st["quest_id"], st["mode"]
+
+    if mode == "text":
+        ok = await update_quest(user_id, quest_id, title=msg.text.strip())
+        suffix = " ✅" if ok else " ⚠️ не синхронизировано"
+        await msg.answer(f"✅ Текст обновлён{suffix}", reply_markup=MAIN_KB)
+
+    elif mode == "time":
+        dt_str = _parse_datetime(msg.text.strip())
+        if not dt_str:
+            _sys_edit_state[user_id] = st
+            await msg.answer("Не понял формат. Попробуй: «завтра в 11», «2026-06-05»")
+            return
+        ok = await update_quest(user_id, quest_id, deadline=dt_str)
+        suffix = " ✅" if ok else " ⚠️ не синхронизировано"
+        await msg.answer(f"✅ Дата обновлена{suffix}", reply_markup=MAIN_KB)
 
 
 # ── Обычные сообщения ─────────────────────────────────────────────────────────
@@ -500,6 +590,10 @@ async def on_message(msg: Message, state: FSMContext):
 
     if user_id in _edit_state:
         await handle_edit(msg)
+        return
+
+    if user_id in _sys_edit_state:
+        await handle_sys_edit(msg)
         return
 
     await msg.bot.send_chat_action(msg.chat.id, "typing")
