@@ -1,0 +1,15 @@
+app            = "system-tg-bot"
+primary_region = "ams"
+
+[build]
+
+[env]
+  DB_PATH = "/data/bot.db"
+
+# SQLite хранится на persistent volume (бесплатно до 3 GB)
+[mounts]
+  source      = "bot_data"
+  destination = "/data"
+
+# Бот работает через long polling — HTTP-сервис не нужен
+# Secrets задаются через: fly secrets set TELEGRAM_TOKEN=... GROQ_API_KEY=...
