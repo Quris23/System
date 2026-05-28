@@ -7,8 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Persistent volume will be mounted at /data
-RUN mkdir -p /data
-ENV DB_PATH=/data/bot.db
+ENV DB_PATH=bot.db
 
 CMD ["python", "main.py"]
