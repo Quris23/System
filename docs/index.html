@@ -720,6 +720,7 @@ const DEF = {
   systems: [],
   daily: [],
   rewards: [],
+  notes: [],
 };
 
 // ── App ──
@@ -800,6 +801,16 @@ function App({ session }) {
     });
   }, [toast]);
 
+  // ── Complete note ──
+  const completeNote = useCallback(id => {
+    SFX.quest();
+    setSt(p => {
+      const n = (p.notes||[]).find(n=>n.id===id);
+      if (!n || n.done) return p;
+      return {...p, notes:p.notes.map(n2=>n2.id===id?{...n2,done:true}:n2), player:earn(p,n.reward)};
+    });
+  }, [toast]);
+
   // ── Complete recurring ──
   const completeDaily = useCallback(id => {
     SFX.daily();
@@ -861,6 +872,10 @@ function App({ session }) {
       })}));
     } else if (type === 'editPlayer') {
       setSt(p => ({ ...p, player:{...p.player, name:data.name||p.player.name} }));
+    } else if (type === 'addNote') {
+      setSt(p => ({ ...p, notes:[...(p.notes||[]), {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', remindBefore:data.remindBefore||'', reward:parseInt(data.reward)||25, done:false}] }));
+    } else if (type === 'editNote') {
+      setSt(p => ({ ...p, notes:(p.notes||[]).map(n => n.id!==modal.noteId ? n : {...n, title:data.title||n.title, description:data.description||'', deadline:data.deadline||'', remindBefore:data.remindBefore||'', reward:parseInt(data.reward)||n.reward}) }));
     }
     setModal(null);
   }, [modal]);
@@ -869,6 +884,7 @@ function App({ session }) {
   const delBlock = (sid, bid) => { setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.filter(b=>b.id!==bid)})})); if(selBlock===bid) setSelBlock(null); };
   const delQuest = (sid,bid,qid) => setSt(p=>({...p,systems:p.systems.map(s=>s.id!==sid?s:{...s,blocks:s.blocks.map(b=>b.id!==bid?b:{...b,quests:b.quests.filter(q=>q.id!==qid)})})}));
   const delDaily = id => setSt(p=>({...p,daily:p.daily.filter(d=>d.id!==id)}));
+  const delNote  = id => setSt(p=>({...p,notes:(p.notes||[]).filter(n=>n.id!==id)}));
   const delReward = id => setSt(p=>({...p,rewards:p.rewards.filter(r=>r.id!==id)}));
 
   // ── Move block / quest ──
@@ -1031,11 +1047,17 @@ function App({ session }) {
         {tab==='daily' && (
           <DailyView
             quests={st.daily}
+            systems={st.systems}
+            notes={st.notes||[]}
             onComplete={completeDaily}
             onAdd={()=>setModal({type:'addDaily'})}
             onDelete={delDaily}
             onSave={(id,data)=>setSt(p=>({...p,daily:p.daily.map(d=>d.id!==id?d:{...d,...data})}))}
-
+            onAddNote={()=>setModal({type:'addNote'})}
+            onEditNote={n=>setModal({type:'editNote', noteId:n.id, data:{title:n.title, description:n.description, deadline:n.deadline, remindBefore:n.remindBefore||'', reward:String(n.reward)}})}
+            onDeleteNote={delNote}
+            onCompleteNote={completeNote}
+            onCompleteQuest={completeQuest}
           />
         )}
         {tab==='shop' && (
@@ -1636,12 +1658,48 @@ function RecurringQuestModal({ quest, onComplete, onSave, onClose }) {
   );
 }
 
-function DailyView({ quests, onComplete, onAdd, onDelete, onSave }) {
+const REMIND_LABELS = {'1day':'за 1 день','6h':'за 6 ч','1h':'за 1 час'};
+
+function DailyView({ quests, systems, notes, onComplete, onAdd, onDelete, onSave, onAddNote, onEditNote, onDeleteNote, onCompleteNote, onCompleteQuest }) {
   const [selId, setSelId] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
   const selQuest = selId ? quests.find(q=>q.id===selId) : null;
   const due = quests.filter(isDue);
   const notDue = quests.filter(q => !isDue(q));
+
+  // Собираем все квесты из систем с дедлайном
+  const importedItems = React.useMemo(() => {
+    const items = [];
+    (systems||[]).forEach(sys => {
+      sys.blocks.forEach(bl => {
+        bl.quests.forEach(q => {
+          if (q.deadline && !q.done) {
+            items.push({ _type:'quest', _sysId:sys.id, _sysColor:sys.color||'#fff', _sysTitle:sys.title, _blockId:bl.id, ...q });
+          }
+        });
+      });
+    });
+    return items;
+  }, [systems]);
+
+  // Собственные записи (не выполненные)
+  const ownNotes = (notes||[]).filter(n=>!n.done);
+  const doneNotes = (notes||[]).filter(n=>n.done);
+
+  // Объединяем и сортируем по дедлайну
+  const planned = React.useMemo(() => {
+    const all = [
+      ...importedItems.map(i=>({...i, _isNote:false})),
+      ...ownNotes.map(n=>({...n, _type:'note', _isNote:true})),
+    ];
+    all.sort((a,b) => {
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline) - new Date(b.deadline);
+    });
+    return all;
+  }, [importedItems, ownNotes]);
+
   return (
     <div className="dv-layout" style={{alignItems:'center'}}>
       {selQuest && (
@@ -1723,6 +1781,84 @@ function DailyView({ quests, onComplete, onAdd, onDelete, onSave }) {
           ))}
         </div>
       )}
+
+      {/* ── ЗАПЛАНИРОВАННЫЕ ── */}
+      <div style={{width:'100%',maxWidth:'560px',marginTop:'8px'}}>
+        {/* Разделитель */}
+        <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}}>
+          <span style={{flex:1,height:'1px',background:'var(--bd)'}}/>
+          <span style={{fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'4px',color:'var(--mut2)'}}>ЗАПЛАНИРОВАННЫЕ</span>
+          <span style={{flex:1,height:'1px',background:'var(--bd)'}}/>
+        </div>
+
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+          <div style={{fontSize:'12px',color:'var(--mut2)',fontWeight:600}}>
+            {planned.length} {planned.length===1?'запись':planned.length<5?'записи':'записей'}
+          </div>
+          <button className="btn btn-pur" style={{fontSize:'12px',padding:'5px 14px'}} onClick={onAddNote}>+ Запись</button>
+        </div>
+
+        {planned.length === 0 && (
+          <div style={{textAlign:'center',padding:'32px 0',color:'var(--mut)',fontSize:'13px'}}>
+            <div style={{fontSize:'28px',marginBottom:'8px',opacity:.3}}>◎</div>
+            Нет запланированных задач
+          </div>
+        )}
+
+        {planned.map(item => {
+          const dl = fmtDl(item.deadline);
+          const remind = item.remindBefore ? REMIND_LABELS[item.remindBefore] : null;
+          return (
+            <div key={item.id} className="dq-card" style={{marginBottom:'8px',cursor:'default'}}>
+              {/* Кнопка выполнить */}
+              <button className="dq-check" title="Выполнить"
+                onClick={()=> item._isNote ? onCompleteNote(item.id) : onCompleteQuest(item._sysId, item._blockId, item.id)}
+              />
+              <div className="dq-info" style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+                  {/* Цветная точка системы для импортированных */}
+                  {!item._isNote && (
+                    <span style={{width:'8px',height:'8px',borderRadius:'50%',background:item._sysColor,flexShrink:0,display:'inline-block'}}/>
+                  )}
+                  <span style={{fontWeight:700,fontSize:'15px'}}>{item.title}</span>
+                  {/* Дедлайн */}
+                  {dl && <span style={{fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'1px',color:dl.color,background:'rgba(0,0,0,.3)',border:`1px solid ${dl.color}`,borderRadius:'2px',padding:'1px 6px',whiteSpace:'nowrap'}}>{dl.text}</span>}
+                  {/* Напоминание */}
+                  {remind && <span style={{fontFamily:'var(--hud)',fontSize:'9px',letterSpacing:'1px',color:'var(--mut2)',background:'var(--s2)',border:'1px solid var(--bd)',borderRadius:'2px',padding:'1px 6px',whiteSpace:'nowrap'}}>🔔 {remind}</span>}
+                </div>
+                {/* Подпись системы для импортированных */}
+                {!item._isNote && <div style={{fontSize:'11px',color:'var(--mut)',marginTop:'2px'}}>{item._sysTitle}</div>}
+                {item.description && <div style={{fontSize:'12px',color:'var(--mut2)',marginTop:'2px',wordBreak:'break-word'}}>{item.description}</div>}
+                <div style={{display:'flex',alignItems:'center',gap:'8px',marginTop:'4px'}}>
+                  <span className="dq-rew">+{item.reward} ✦</span>
+                </div>
+              </div>
+              {/* Кнопки только для своих записей */}
+              {item._isNote && (
+                <div style={{display:'flex',gap:'4px',flexShrink:0}}>
+                  <button className="ic-btn" title="Редактировать" onClick={()=>onEditNote(item)}>✎</button>
+                  <button className="ic-btn" title="Удалить" onClick={()=>onDeleteNote(item.id)}>✕</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Выполненные записи */}
+        {doneNotes.length > 0 && (
+          <div style={{marginTop:'8px',opacity:.45}}>
+            {doneNotes.map(n=>(
+              <div key={n.id} className="dq-card dq-done" style={{marginBottom:'6px',cursor:'default'}}>
+                <div className="dq-check done" style={{pointerEvents:'none'}}>✓</div>
+                <div className="dq-info" style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:'14px',textDecoration:'line-through'}}>{n.title}</div>
+                </div>
+                <button className="ic-btn" onClick={()=>onDeleteNote(n.id)}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1855,6 +1991,36 @@ const FORMS = {
       {k:'name', label:'Имя игрока', type:'text', req:true},
     ]
   },
+  addNote: {
+    title:'Новая Запись',
+    fields:[
+      {k:'title',        label:'Название',      type:'text', req:true},
+      {k:'description',  label:'Описание',      type:'textarea'},
+      {k:'deadline',     label:'Дата',          type:'date', req:true},
+      {k:'remindBefore', label:'Напомнить',     type:'select', options:[
+        {v:'',     l:'Без напоминания'},
+        {v:'1day', l:'За день до'},
+        {v:'6h',   l:'За 6 часов до'},
+        {v:'1h',   l:'За час до'},
+      ]},
+      {k:'reward',       label:'Награда (✦)',   type:'number', ph:'25'},
+    ]
+  },
+  editNote: {
+    title:'Редактировать запись',
+    fields:[
+      {k:'title',        label:'Название',      type:'text', req:true},
+      {k:'description',  label:'Описание',      type:'textarea'},
+      {k:'deadline',     label:'Дата',          type:'date', req:true},
+      {k:'remindBefore', label:'Напомнить',     type:'select', options:[
+        {v:'',     l:'Без напоминания'},
+        {v:'1day', l:'За день до'},
+        {v:'6h',   l:'За 6 часов до'},
+        {v:'1h',   l:'За час до'},
+      ]},
+      {k:'reward',       label:'Награда (✦)',   type:'number', ph:'25'},
+    ]
+  },
 };
 
 function FormModal({ modal, onClose, onSubmit }) {
@@ -1904,6 +2070,17 @@ function FormModal({ modal, onClose, onSubmit }) {
                     value={pval||'3'} placeholder="Количество дней"
                     onChange={e => setPeriod('every', e.target.value)} />
                 )}
+              </div>
+            );
+          }
+          if (f.type === 'select') {
+            return (
+              <div key={f.k} className="fg">
+                <label className="flbl">{f.label}</label>
+                <select className="fi" style={{cursor:'pointer'}} value={form[f.k]||''}
+                  onChange={e=>set(f.k,e.target.value)}>
+                  {f.options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
               </div>
             );
           }
