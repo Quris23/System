@@ -24,7 +24,7 @@ from db import (
 )
 from agent import Agent
 from scheduler import run_scheduler
-from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests, add_note
+from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests, add_note, mark_quest_done
 
 logging.basicConfig(
     level=logging.INFO,
@@ -274,12 +274,12 @@ async def _save_and_confirm(cb: CallbackQuery, data: dict,
 # ── Недельный вид задач ───────────────────────────────────────────────────────
 
 async def _week_message(user_id: int, week_offset: int) -> tuple[str, InlineKeyboardMarkup]:
-    """Собрать текст + клавиатуру для задач на неделю с offset=N."""
+    """Каждая задача — отдельная кнопка. Клик → детальный вид с Выполнена/Отмена."""
     today      = datetime.now().date()
     week_start = today + timedelta(days=week_offset * 7)
     week_end   = week_start + timedelta(days=7)
 
-    items: list[tuple] = []  # (date, text_line)
+    items = []  # {date, icon, title, type, id}
 
     # Локальные задачи бота
     for r in await list_reminders(user_id):
@@ -288,8 +288,8 @@ async def _week_message(user_id: int, week_offset: int) -> tuple[str, InlineKeyb
         except ValueError:
             continue
         if week_start <= dt < week_end:
-            pts = f"  +{r['points']} ✦" if r.get("points") else ""
-            items.append((dt, f"🗓 <b>{dt.strftime('%d.%m')}</b>  {r['text']}{pts}\n   <i>📌 бот</i>"))
+            items.append({"date": dt, "icon": "📌", "title": r["text"],
+                          "type": "bot", "id": str(r["id"])})
 
     # Квесты из SYSTEM (Supabase)
     for q in await get_upcoming_quests(user_id):
@@ -298,26 +298,31 @@ async def _week_message(user_id: int, week_offset: int) -> tuple[str, InlineKeyb
         except ValueError:
             continue
         if week_start <= dt < week_end:
-            pts = f"  +{q['reward']} ✦" if q.get("reward") else ""
-            src = f"{q['system_title']} → {q['block_title']}"
-            items.append((dt, f"🗓 <b>{dt.strftime('%d.%m')}</b>  {q['title']}{pts}\n   <i>{src}</i>"))
+            items.append({"date": dt, "icon": "🪐", "title": q["title"],
+                          "type": "sys", "id": q["id"]})
 
-    items.sort(key=lambda x: x[0])
+    items.sort(key=lambda x: x["date"])
 
     header = (
         f"📅 <b>{week_start.strftime('%d.%m')} — "
         f"{(week_end - timedelta(days=1)).strftime('%d.%m')}</b>"
     )
-    body  = "\n\n".join(t for _, t in items) if items else "Нет задач на эту неделю."
-    text  = f"{header}\n\n{body}"
+    text = header if items else f"{header}\n\nНет задач на эту неделю."
+
+    rows = []
+    for it in items:
+        title_s = it["title"][:30] + ("…" if len(it["title"]) > 30 else "")
+        btn_txt = f"{it['icon']} {it['date'].strftime('%d.%m')}  {title_s}"
+        cb_data = f"task:{it['type']}:{it['id']}:{week_offset}"
+        rows.append([InlineKeyboardButton(text=btn_txt, callback_data=cb_data)])
 
     nav = []
     if week_offset > 0:
-        nav.append(InlineKeyboardButton(text="← Пред. неделя", callback_data=f"week:{week_offset-1}"))
+        nav.append(InlineKeyboardButton(text="← Пред.", callback_data=f"week:{week_offset-1}"))
     nav.append(InlineKeyboardButton(text="Сл. неделя →", callback_data=f"week:{week_offset+1}"))
-    kb = InlineKeyboardMarkup(inline_keyboard=[nav])
+    rows.append(nav)
 
-    return text, kb
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @dp.message(F.text == "📋 Ближайшие задачи")
@@ -331,6 +336,67 @@ async def btn_tasks(msg: Message, state: FSMContext):
 async def cb_week(cb: CallbackQuery):
     offset = int(cb.data.split(":")[1])
     text, kb = await _week_message(cb.from_user.id, week_offset=offset)
+    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await cb.answer()
+
+
+# ── Детальный вид задачи ──────────────────────────────────────────────────────
+
+@dp.callback_query(F.data.startswith("task:"))
+async def cb_task_view(cb: CallbackQuery):
+    _, task_type, task_id, week_str = cb.data.split(":", 3)
+    week_offset = int(week_str)
+    back_kb_row = [InlineKeyboardButton(text="⬅️ К списку", callback_data=f"week:{week_offset}")]
+
+    if task_type == "bot":
+        task = await get_reminder(int(task_id))
+        if not task:
+            await cb.answer("Задача не найдена", show_alert=True)
+            return
+        dt  = task["remind_at"][:16]
+        pts = f"\n💎 +{task['points']} ✦" if task.get("points") else ""
+        text = f"📌 <b>{task['text']}</b>\n🗓 {dt}{pts}"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Выполнена",  callback_data=f"done:{task_id}"),
+                InlineKeyboardButton(text="❌ Отмена",     callback_data=f"remind_dismiss:{task_id}"),
+            ],
+            back_kb_row,
+        ])
+
+    else:  # sys — квест из SYSTEM
+        quests = await get_upcoming_quests(cb.from_user.id)
+        quest  = next((q for q in quests if q.get("id") == task_id), None)
+        if not quest:
+            await cb.answer("Квест не найден", show_alert=True)
+            return
+        pts = f"\n💎 +{quest['reward']} ✦" if quest.get("reward") else ""
+        src = f"{quest['system_title']} → {quest['block_title']}"
+        text = f"🪐 <b>{quest['title']}</b>\n🗓 {quest['deadline']}{pts}\n<i>{src}</i>"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Выполнена", callback_data=f"sys_done:{task_id}:{week_offset}"),
+                InlineKeyboardButton(text="❌ Отмена",    callback_data=f"week:{week_offset}"),
+            ],
+            back_kb_row,
+        ])
+
+    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("sys_done:"))
+async def cb_sys_done(cb: CallbackQuery):
+    _, quest_id, week_str = cb.data.split(":", 2)
+    week_offset = int(week_str)
+    ok = await mark_quest_done(cb.from_user.id, quest_id)
+    if ok:
+        text = "✅ Квест выполнен!"
+    else:
+        text = "⚠️ Не удалось обновить на сайте. Отметь вручную."
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⬅️ К списку", callback_data=f"week:{week_offset}"),
+    ]])
     await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await cb.answer()
 

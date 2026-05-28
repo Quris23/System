@@ -73,6 +73,7 @@ async def get_upcoming_quests(telegram_id: int) -> list[dict]:
                 if not dl:
                     continue
                 quests.append({
+                    "id":           q["id"],
                     "title":        q["title"],
                     "deadline":     dl,          # YYYY-MM-DD
                     "reward":       q.get("reward", 0),
@@ -81,6 +82,44 @@ async def get_upcoming_quests(telegram_id: int) -> list[dict]:
                 })
     quests.sort(key=lambda q: q["deadline"])
     return quests
+
+
+async def mark_quest_done(telegram_id: int, quest_id: str) -> bool:
+    """Пометить квест как выполненный в Supabase."""
+    result = await _get_state_by_tg(telegram_id)
+    if not result:
+        return False
+    user_id, state = result
+
+    marked = False
+    for sys in state.get("systems", []):
+        for blk in sys.get("blocks", []):
+            for q in blk.get("quests", []):
+                if q.get("id") == quest_id:
+                    q["done"] = True
+                    marked = True
+                    break
+            if marked:
+                break
+        if marked:
+            break
+
+    if not marked:
+        # Поищем в notes
+        for n in state.get("notes", []):
+            if n.get("id") == quest_id:
+                n["done"] = True
+                marked = True
+                break
+
+    if not marked:
+        return False
+
+    url = f"{SUPABASE_URL}/rest/v1/user_state?user_id=eq.{user_id}"
+    payload = {"state": state, "updated_at": datetime.now(timezone.utc).isoformat()}
+    async with aiohttp.ClientSession() as s:
+        async with s.patch(url, headers=_HEADERS, json=payload) as r:
+            return r.status in (200, 204)
 
 
 async def add_note(telegram_id: int, title: str, deadline: str, reward: int) -> bool:
