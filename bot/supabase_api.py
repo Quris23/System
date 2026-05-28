@@ -50,6 +50,36 @@ async def get_systems(telegram_id: int) -> list[dict]:
     return state.get("systems", [])
 
 
+async def get_upcoming_quests(telegram_id: int) -> list[dict]:
+    """
+    Вернуть все незавершённые квесты с дедлайном из всех систем/блоков.
+    Каждый элемент: {title, deadline, reward, system_title, block_title}
+    Отсортировано по дедлайну.
+    """
+    result = await _get_state_by_tg(telegram_id)
+    if not result:
+        return []
+    _, state = result
+    quests = []
+    for sys in state.get("systems", []):
+        for blk in sys.get("blocks", []):
+            for q in blk.get("quests", []):
+                if q.get("done"):
+                    continue
+                dl = q.get("deadline", "")
+                if not dl:
+                    continue
+                quests.append({
+                    "title":        q["title"],
+                    "deadline":     dl,          # YYYY-MM-DD
+                    "reward":       q.get("reward", 0),
+                    "system_title": sys["title"],
+                    "block_title":  blk["title"],
+                })
+    quests.sort(key=lambda q: q["deadline"])
+    return quests
+
+
 async def add_quest_to_block(telegram_id: int, system_id: str, block_id: str,
                               title: str, deadline: str, reward: int) -> bool:
     """

@@ -24,7 +24,7 @@ from db import (
 )
 from agent import Agent
 from scheduler import run_scheduler
-from supabase_api import get_systems, add_quest_to_block
+from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests
 
 logging.basicConfig(
     level=logging.INFO,
@@ -270,17 +270,44 @@ async def _save_and_confirm(cb: CallbackQuery, data: dict,
 @dp.message(F.text == "📋 Ближайшие задачи")
 async def btn_tasks(msg: Message, state: FSMContext):
     await state.clear()
-    rows = await list_reminders(msg.from_user.id)
-    if not rows:
+    user_id = msg.from_user.id
+
+    # Задачи из локальной БД бота
+    local = await list_reminders(user_id)
+
+    # Квесты с дедлайнами из SYSTEM (Supabase)
+    system_quests = await get_upcoming_quests(user_id)
+
+    if not local and not system_quests:
         await msg.answer(
             "Нет активных задач. Нажми «📝 Создать задачу».",
             reply_markup=MAIN_KB,
         )
         return
-    for r in rows[:5]:
-        await msg.answer(_task_text(r), reply_markup=_task_done_kb(r["id"]))
-    if len(rows) > 5:
-        await msg.answer(f"...и ещё {len(rows)-5} задач. Все — /tasks")
+
+    # Сначала локальные (из бота)
+    if local:
+        await msg.answer("📋 <b>Задачи из бота:</b>", parse_mode="HTML")
+        for r in local[:5]:
+            await msg.answer(_task_text(r), reply_markup=_task_done_kb(r["id"]))
+        if len(local) > 5:
+            await msg.answer(f"...и ещё {len(local)-5}. Все — /tasks")
+
+    # Потом квесты из SYSTEM
+    if system_quests:
+        await msg.answer("🪐 <b>Квесты из SYSTEM:</b>", parse_mode="HTML")
+        for q in system_quests[:8]:
+            dl = q["deadline"]  # YYYY-MM-DD
+            pts = f"+{q['reward']} ✦" if q.get("reward") else ""
+            loc = f"{q['system_title']} → {q['block_title']}"
+            await msg.answer(
+                f"🗓 {dl}  {pts}\n"
+                f"📝 {q['title']}\n"
+                f"<i>{loc}</i>",
+                parse_mode="HTML",
+            )
+        if len(system_quests) > 8:
+            await msg.answer(f"...и ещё {len(system_quests)-8} квестов на сайте")
 
 
 # ── Кнопка: Изменить задачу ───────────────────────────────────────────────────
