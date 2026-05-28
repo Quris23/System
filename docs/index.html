@@ -871,7 +871,13 @@ function App({ session }) {
         ...r, title:data.title||r.title, description:data.description||'', cost:parseInt(data.cost)||r.cost, repeatable:!!data.repeatable,
       })}));
     } else if (type === 'editPlayer') {
-      setSt(p => ({ ...p, player:{...p.player, name:data.name||p.player.name} }));
+      setSt(p => ({ ...p, player:{
+        ...p.player,
+        name: data.name || p.player.name,
+        telegram_id:         'telegram_id'         in data ? data.telegram_id         : p.player.telegram_id,
+        telegram_username:   'telegram_username'   in data ? data.telegram_username   : p.player.telegram_username,
+        telegram_first_name: 'telegram_first_name' in data ? data.telegram_first_name : p.player.telegram_first_name,
+      }}));
     } else if (type === 'addNote') {
       setSt(p => ({ ...p, notes:[...(p.notes||[]), {id:uid(), title:data.title, description:data.description||'', deadline:data.deadline||'', remindBefore:data.remindBefore||'', reward:parseInt(data.reward)||25, done:false}] }));
     } else if (type === 'editNote') {
@@ -963,7 +969,10 @@ function App({ session }) {
       </div>
 
       {/* Modals */}
-      {modal && <FormModal modal={modal} onClose={()=>setModal(null)} onSubmit={submit} />}
+      {modal && (modal.type === 'editPlayer'
+        ? <ProfileModal modal={modal} onClose={()=>setModal(null)} onSubmit={submit} player={st.player} />
+        : <FormModal modal={modal} onClose={()=>setModal(null)} onSubmit={submit} />
+      )}
       {questDetail && (
         <QuestModal
           qd={questDetail}
@@ -980,6 +989,7 @@ function App({ session }) {
         <div className="hdr-div" />
         <button id="player-btn" onClick={()=>setModal({type:'editPlayer'})}>
           <span id="pname">{st.player.name}</span>
+          {st.player.telegram_id && <span title="Telegram подключён" style={{fontSize:'13px',opacity:0.8}}>✈️</span>}
           <span id="lvl-badge">LVL {level}</span>
         </button>
         <div id="xp-wrap">
@@ -2022,6 +2032,96 @@ const FORMS = {
     ]
   },
 };
+
+// ── PROFILE MODAL (with Telegram Login Widget) ──────────────────────────────
+function ProfileModal({ modal, onClose, onSubmit, player }) {
+  const [name, setName] = React.useState(player.name || '');
+  const tgRef  = React.useRef(null);
+  const tgData = React.useRef(null); // holds {id, username, first_name} after widget auth
+
+  React.useEffect(() => {
+    // Global callback required by Telegram Login Widget
+    window._systemsTgAuth = (user) => {
+      tgData.current = user;
+      // Immediately save to state (widget fires the callback, not a button click)
+      onSubmit({
+        name,
+        telegram_id:         user.id,
+        telegram_username:   user.username    || null,
+        telegram_first_name: user.first_name  || null,
+      });
+    };
+
+    // Inject widget script only if not yet connected
+    if (tgRef.current && !player.telegram_id) {
+      const s = document.createElement('script');
+      s.src = 'https://telegram.org/js/telegram-widget.js?22';
+      s.setAttribute('data-telegram-login', 'systems_assistant_bot');
+      s.setAttribute('data-size', 'medium');
+      s.setAttribute('data-radius', '4');
+      s.setAttribute('data-onauth', '_systemsTgAuth(user)');
+      s.setAttribute('data-request-access', 'write');
+      s.async = true;
+      tgRef.current.appendChild(s);
+    }
+
+    return () => { delete window._systemsTgAuth; };
+  }, []);
+
+  const save = () => onSubmit({ name });
+
+  const disconnect = () => onSubmit({
+    name,
+    telegram_id: null, telegram_username: null, telegram_first_name: null,
+  });
+
+  const tgHandle = player.telegram_username
+    ? '@' + player.telegram_username
+    : player.telegram_first_name || 'подключён';
+
+  return (
+    <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal">
+        <div className="modal-title">Профиль</div>
+
+        {/* Имя */}
+        <div className="fg">
+          <label className="flbl">Имя игрока</label>
+          <input className="fi" type="text" value={name}
+            onChange={e=>setName(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&save()} />
+        </div>
+
+        {/* Telegram */}
+        <div className="fg">
+          <label className="flbl">Telegram</label>
+          {player.telegram_id ? (
+            <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'8px 0'}}>
+              <span style={{fontSize:'14px',color:'#2AABEE',fontWeight:600}}>✈️ {tgHandle}</span>
+              <button className="btn btn-ghost"
+                style={{fontSize:'11px',padding:'3px 12px',opacity:0.7}}
+                onClick={disconnect}>
+                Отключить
+              </button>
+            </div>
+          ) : (
+            <div style={{padding:'8px 0'}}>
+              <div ref={tgRef} />
+              <div style={{fontSize:'12px',color:'var(--sub)',marginTop:'6px',lineHeight:'1.4'}}>
+                Подключи аккаунт — бот будет связан с твоим профилем
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-acts">
+          <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
+          <button className="btn btn-pur" onClick={save}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function FormModal({ modal, onClose, onSubmit }) {
   const def = FORMS[modal.type];
