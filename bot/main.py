@@ -24,7 +24,7 @@ from db import (
 )
 from agent import Agent
 from scheduler import run_scheduler
-from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests
+from supabase_api import get_systems, add_quest_to_block, get_upcoming_quests, add_note
 
 logging.basicConfig(
     level=logging.INFO,
@@ -181,7 +181,14 @@ async def create_points(cb: CallbackQuery, state: FSMContext):
 async def planet_skip(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await state.clear()
-    await _save_and_confirm(cb, data, system_title=None, block_title=None)
+    # Сохраняем как заметку в SYSTEM (Supabase), чтобы появилось в Запланированных
+    ok = await add_note(
+        cb.from_user.id,
+        title    = data["info"],
+        deadline = data["deadline"],
+        reward   = data["points"],
+    )
+    await _save_and_confirm(cb, data, system_title=None, block_title=None, supabase_ok=ok)
 
 
 @dp.callback_query(CreateTask.planet, F.data.startswith("sys:"))
@@ -252,11 +259,10 @@ async def _save_and_confirm(cb: CallbackQuery, data: dict,
     ]
     if system_title:
         planet_line = f"🪐 {system_title} → 📦 {block_title}"
-        if supabase_ok:
-            planet_line += "  ✅"
-        else:
-            planet_line += "  ⚠️ (не удалось записать в SYSTEM)"
+        planet_line += "  ✅" if supabase_ok else "  ⚠️ (не удалось записать в SYSTEM)"
         lines.append(planet_line)
+    elif supabase_ok:
+        lines.append("📋 Добавлено в Запланированные на сайте ✅")
     else:
         lines.append("💾 Только в боте")
 

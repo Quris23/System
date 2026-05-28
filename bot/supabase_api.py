@@ -80,6 +80,37 @@ async def get_upcoming_quests(telegram_id: int) -> list[dict]:
     return quests
 
 
+async def add_note(telegram_id: int, title: str, deadline: str, reward: int) -> bool:
+    """
+    Добавить заметку в state.notes (без привязки к системе).
+    Отображается в разделе «Запланированные» на сайте.
+    """
+    result = await _get_state_by_tg(telegram_id)
+    if not result:
+        return False
+    user_id, state = result
+
+    note = {
+        "id":           _uid(),
+        "title":        title,
+        "description":  "",
+        "deadline":     deadline[:10],  # YYYY-MM-DD
+        "remindBefore": "",
+        "reward":       reward,
+        "done":         False,
+    }
+    state.setdefault("notes", []).append(note)
+
+    url = f"{SUPABASE_URL}/rest/v1/user_state?user_id=eq.{user_id}"
+    payload = {
+        "state":      state,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    async with aiohttp.ClientSession() as s:
+        async with s.patch(url, headers=_HEADERS, json=payload) as r:
+            return r.status in (200, 204)
+
+
 async def add_quest_to_block(telegram_id: int, system_id: str, block_id: str,
                               title: str, deadline: str, reward: int) -> bool:
     """
