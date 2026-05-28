@@ -52,15 +52,10 @@ class EditTask(StatesGroup):
 # ── Клавиатуры ────────────────────────────────────────────────────────────────
 
 MAIN_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text="📝 Создать задачу"),
-            KeyboardButton(text="📋 Ближайшие задачи"),
-        ],
-        [
-            KeyboardButton(text="✏️ Изменить задачу"),
-        ],
-    ],
+    keyboard=[[
+        KeyboardButton(text="📝 Создать задачу"),
+        KeyboardButton(text="📋 Ближайшие задачи"),
+    ]],
     resize_keyboard=True,
     persistent=True,
 )
@@ -271,141 +266,20 @@ async def _save_and_confirm(cb: CallbackQuery, data: dict,
     await cb.answer()
 
 
-# ── Недельный вид задач ───────────────────────────────────────────────────────
+# ── Карточки задач: вспомогательные функции ──────────────────────────────────
 
-async def _week_message(user_id: int, week_offset: int) -> tuple[str, InlineKeyboardMarkup]:
-    """Каждая задача — отдельная кнопка. Клик → детальный вид с Выполнена/Отмена."""
-    today      = datetime.now().date()
-    week_start = today + timedelta(days=week_offset * 7)
-    week_end   = week_start + timedelta(days=7)
-
-    items = []  # {date, icon, title, type, id}
-
-    # Локальные задачи бота
-    for r in await list_reminders(user_id):
-        try:
-            dt = datetime.strptime(r["remind_at"][:10], "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if week_start <= dt < week_end:
-            items.append({"date": dt, "icon": "📌", "title": r["text"],
-                          "type": "bot", "id": str(r["id"])})
-
-    # Квесты из SYSTEM (Supabase)
-    for q in await get_upcoming_quests(user_id):
-        try:
-            dt = datetime.strptime(q["deadline"], "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if week_start <= dt < week_end:
-            items.append({"date": dt, "icon": "🪐", "title": q["title"],
-                          "type": "sys", "id": q["id"]})
-
-    items.sort(key=lambda x: x["date"])
-
-    header = (
-        f"📅 <b>{week_start.strftime('%d.%m')} — "
-        f"{(week_end - timedelta(days=1)).strftime('%d.%m')}</b>"
-    )
-    text = header if items else f"{header}\n\nНет задач на эту неделю."
-
-    rows = []
-    for it in items:
-        title_s = it["title"][:30] + ("…" if len(it["title"]) > 30 else "")
-        btn_txt = f"{it['icon']} {it['date'].strftime('%d.%m')}  {title_s}"
-        cb_data = f"task:{it['type']}:{it['id']}:{week_offset}"
-        rows.append([InlineKeyboardButton(text=btn_txt, callback_data=cb_data)])
-
-    nav = []
-    if week_offset > 0:
-        nav.append(InlineKeyboardButton(text="← Пред.", callback_data=f"week:{week_offset-1}"))
-    nav.append(InlineKeyboardButton(text="Сл. неделя →", callback_data=f"week:{week_offset+1}"))
-    rows.append(nav)
-
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-@dp.message(F.text == "📋 Ближайшие задачи")
-async def btn_tasks(msg: Message, state: FSMContext):
-    await state.clear()
-    text, kb = await _week_message(msg.from_user.id, week_offset=0)
-    await msg.answer(text, reply_markup=kb, parse_mode="HTML")
-
-
-@dp.callback_query(F.data.startswith("week:"))
-async def cb_week(cb: CallbackQuery):
-    offset = int(cb.data.split(":")[1])
-    text, kb = await _week_message(cb.from_user.id, week_offset=offset)
-    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await cb.answer()
-
-
-# ── Детальный вид задачи ──────────────────────────────────────────────────────
-
-@dp.callback_query(F.data.startswith("task:"))
-async def cb_task_view(cb: CallbackQuery):
-    _, task_type, task_id, week_str = cb.data.split(":", 3)
-    week_offset = int(week_str)
-    back_kb_row = [InlineKeyboardButton(text="⬅️ К списку", callback_data=f"week:{week_offset}")]
-
-    if task_type == "bot":
-        task = await get_reminder(int(task_id))
-        if not task:
-            await cb.answer("Задача не найдена", show_alert=True)
-            return
-        dt  = task["remind_at"][:16]
-        pts = f"\n💎 +{task['points']} ✦" if task.get("points") else ""
-        text = f"📌 <b>{task['text']}</b>\n🗓 {dt}{pts}"
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Выполнена",  callback_data=f"done:{task_id}"),
-                InlineKeyboardButton(text="❌ Отмена",     callback_data=f"remind_dismiss:{task_id}"),
-            ],
-            back_kb_row,
-        ])
-
-    else:  # sys — квест из SYSTEM
-        quests = await get_upcoming_quests(cb.from_user.id)
-        quest  = next((q for q in quests if q.get("id") == task_id), None)
-        if not quest:
-            await cb.answer("Квест не найден", show_alert=True)
-            return
-        pts = f"\n💎 +{quest['reward']} ✦" if quest.get("reward") else ""
-        src = f"{quest['system_title']} → {quest['block_title']}"
-        text = f"🪐 <b>{quest['title']}</b>\n🗓 {quest['deadline']}{pts}\n<i>{src}</i>"
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Выполнена", callback_data=f"sys_done:{task_id}:{week_offset}"),
-                InlineKeyboardButton(text="❌ Отмена",    callback_data=f"week:{week_offset}"),
-            ],
-            back_kb_row,
-        ])
-
-    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await cb.answer()
-
-
-@dp.callback_query(F.data.startswith("sys_done:"))
-async def cb_sys_done(cb: CallbackQuery):
-    _, quest_id, week_str = cb.data.split(":", 2)
-    week_offset = int(week_str)
-    ok = await mark_quest_done(cb.from_user.id, quest_id)
-    if ok:
-        text = "✅ Квест выполнен!"
-    else:
-        text = "⚠️ Не удалось обновить на сайте. Отметь вручную."
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⬅️ К списку", callback_data=f"week:{week_offset}"),
-    ]])
-    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    await cb.answer()
-
-
-# ── Кнопка: Изменить задачу ───────────────────────────────────────────────────
+def _sys_task_text(q: dict) -> str:
+    pts = f"+{q['reward']} ✦" if q.get("reward") else "без очков"
+    return (f"🗓 {q['deadline']}  |  {pts}\n"
+            f"{q['title']}\n"
+            f"<i>{q['system_title']} → {q['block_title']}</i>")
 
 def _sys_task_edit_kb(quest_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"sys_mark_done:{quest_id}")],
+        [
+            InlineKeyboardButton(text="✅ Выполнено", callback_data=f"sys_mark_done:{quest_id}"),
+            InlineKeyboardButton(text="❌ Отмена",    callback_data=f"sys_dismiss:{quest_id}"),
+        ],
         [
             InlineKeyboardButton(text="✏️ Текст",  callback_data=f"sys_edit_text:{quest_id}"),
             InlineKeyboardButton(text="🕐 Время",  callback_data=f"sys_edit_time:{quest_id}"),
@@ -413,28 +287,82 @@ def _sys_task_edit_kb(quest_id: str) -> InlineKeyboardMarkup:
         ],
     ])
 
-_sys_edit_state: dict[int, dict] = {}   # {user_id: {mode, quest_id}}
+_sys_edit_state: dict[int, dict] = {}
 
-@dp.message(F.text == "✏️ Изменить задачу")
-async def btn_edit(msg: Message, state: FSMContext):
+
+async def _send_week_cards(chat_id: int, user_id: int, week_offset: int):
+    """Отправить карточки задач на неделю + кнопку навигации."""
+    today      = datetime.now().date()
+    week_start = today + timedelta(days=week_offset * 7)
+    week_end   = week_start + timedelta(days=7)
+
+    items = []
+
+    for r in await list_reminders(user_id):
+        try:
+            dt = datetime.strptime(r["remind_at"][:10], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if week_start <= dt < week_end:
+            items.append({"date": dt, "type": "bot", "data": r})
+
+    for q in await get_upcoming_quests(user_id):
+        try:
+            dt = datetime.strptime(q["deadline"], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if week_start <= dt < week_end:
+            items.append({"date": dt, "type": "sys", "data": q})
+
+    items.sort(key=lambda x: x["date"])
+
+    header = (f"📅 <b>{week_start.strftime('%d.%m')} — "
+              f"{(week_end - timedelta(days=1)).strftime('%d.%m')}</b>")
+    await bot.send_message(chat_id, header, parse_mode="HTML")
+
+    if not items:
+        await bot.send_message(chat_id, "Нет задач на эту неделю.")
+    else:
+        for it in items:
+            if it["type"] == "bot":
+                r = it["data"]
+                await bot.send_message(chat_id, _task_text(r),
+                                       reply_markup=_task_edit_kb(r["id"]))
+            else:
+                q = it["data"]
+                await bot.send_message(chat_id, _sys_task_text(q),
+                                       reply_markup=_sys_task_edit_kb(q["id"]),
+                                       parse_mode="HTML")
+
+    nav = []
+    if week_offset > 0:
+        nav.append(InlineKeyboardButton(text="← Пред. неделя",
+                                        callback_data=f"week:{week_offset-1}"))
+    nav.append(InlineKeyboardButton(text="Следующая неделя →",
+                                    callback_data=f"week:{week_offset+1}"))
+    await bot.send_message(chat_id, "─" * 16,
+                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[nav]))
+
+
+@dp.message(F.text == "📋 Ближайшие задачи")
+async def btn_tasks(msg: Message, state: FSMContext):
     await state.clear()
-    user_id = msg.from_user.id
-    local  = await list_reminders(user_id)
-    system = await get_upcoming_quests(user_id)
+    await _send_week_cards(msg.chat.id, msg.from_user.id, week_offset=0)
 
-    if not local and not system:
-        await msg.answer("Нет активных задач.", reply_markup=MAIN_KB)
-        return
 
-    for r in local[:5]:
-        await msg.answer(_task_text(r), reply_markup=_task_edit_kb(r["id"]))
+@dp.callback_query(F.data.startswith("week:"))
+async def cb_week(cb: CallbackQuery):
+    offset = int(cb.data.split(":")[1])
+    await cb.answer()
+    await _send_week_cards(cb.message.chat.id, cb.from_user.id, week_offset=offset)
 
-    for q in system[:10]:
-        pts = f"+{q['reward']} ✦" if q.get("reward") else "без очков"
-        text = (f"🗓 {q['deadline']}  |  {pts}\n"
-                f"{q['title']}\n"
-                f"<i>{q['system_title']} → {q['block_title']}</i>")
-        await msg.answer(text, reply_markup=_sys_task_edit_kb(q["id"]), parse_mode="HTML")
+
+# ── Inline: Выполнено / Отмена для SYSTEM-квестов ────────────────────────────
+
+@dp.callback_query(F.data.startswith("sys_dismiss:"))
+async def cb_sys_dismiss(cb: CallbackQuery):
+    await cb.message.edit_text("❌ Отклонено.", reply_markup=None)
+    await cb.answer()
 
 
 # ── /tasks ────────────────────────────────────────────────────────────────────
@@ -655,7 +583,10 @@ def _task_done_kb(task_id: int) -> InlineKeyboardMarkup:
 
 def _task_edit_kb(task_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{task_id}")],
+        [
+            InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{task_id}"),
+            InlineKeyboardButton(text="❌ Отмена",    callback_data=f"remind_dismiss:{task_id}"),
+        ],
         [
             InlineKeyboardButton(text="✏️ Текст",  callback_data=f"edit_text:{task_id}"),
             InlineKeyboardButton(text="🕐 Время",  callback_data=f"edit_time:{task_id}"),
