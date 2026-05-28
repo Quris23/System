@@ -1,16 +1,20 @@
 """
-SYSTEM Telegram Bot — личный секретарь с очками и редактированием задач.
+SYSTEM Telegram Bot — секретарь с панелью кнопок и FSM-созданием задач.
 """
 import asyncio
 import logging
 import re as _re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
 )
 
 from config import TELEGRAM_TOKEN
@@ -28,77 +32,315 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 bot   = Bot(token=TELEGRAM_TOKEN)
-dp    = Dispatcher()
+dp    = Dispatcher(storage=MemoryStorage())
 agent = Agent()
 
-# user_id → {"mode": "text"|"time"|"points", "task_id": int, "msg_id": int}
-_edit_state: dict[int, dict] = {}
+
+# ── FSM States ────────────────────────────────────────────────────────────────
+
+class CreateTask(StatesGroup):
+    info     = State()   # шаг 1: описание задачи
+    deadline = State()   # шаг 2: дедлайн
+    points   = State()   # шаг 3: оценка очков (через inline-кнопки)
+
+class EditTask(StatesGroup):
+    choose   = State()   # выбор задачи для редактирования
+    field    = State()   # что меняем: текст / время / очки
+    value    = State()   # вводим новое значение
+
+
+# ── Постоянная клавиатура ─────────────────────────────────────────────────────
+
+MAIN_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="📝 Создать задачу"),
+            KeyboardButton(text="📋 Ближайшие задачи"),
+        ],
+        [
+            KeyboardButton(text="✏️ Изменить задачу"),
+        ],
+    ],
+    resize_keyboard=True,
+    persistent=True,
+)
+
+POINTS_KB = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="⚡ До 30 мин  — 5 ✦",         callback_data="pts:5")],
+    [InlineKeyboardButton(text="🔧 30 мин – 2 ч  — 10 ✦",    callback_data="pts:10")],
+    [InlineKeyboardButton(text="🏋️ 2 ч+  — 20 ✦",            callback_data="pts:20")],
+    [InlineKeyboardButton(text="📦 Блок / 1–3 дня  — 40 ✦",  callback_data="pts:40")],
+    [InlineKeyboardButton(text="🗻 Тяжёлый / неделя+  — 80 ✦", callback_data="pts:80")],
+])
 
 
 # ── /start ────────────────────────────────────────────────────────────────────
 
 @dp.message(CommandStart())
-async def cmd_start(msg: Message):
+async def cmd_start(msg: Message, state: FSMContext):
+    await state.clear()
     name = msg.from_user.first_name or "Игрок"
     await msg.answer(
         f"⚡ Привет, {name}!\n\n"
-        "Я — твой личный секретарь.\n\n"
-        "Просто пиши задачи:\n"
-        "• «напомни завтра в 10 про встречу»\n"
-        "• «в пятницу в 18 сдать лабу по мет. оптим.»\n"
-        "• «через 2 часа позвонить маме»\n\n"
-        "Я сам оценю задачу в очках по твоей системе.\n\n"
-        "/tasks — список задач\n"
-        "/help — справка"
+        "Я — твой личный секретарь системы SYSTEM.\n\n"
+        "Используй кнопки внизу или просто пиши задачи текстом:\n"
+        "«напомни завтра в 10 про встречу с куратором»",
+        reply_markup=MAIN_KB,
     )
 
 
-# ── /help ─────────────────────────────────────────────────────────────────────
+# ── Кнопка: Создать задачу ────────────────────────────────────────────────────
 
-@dp.message(Command("help"))
-async def cmd_help(msg: Message):
+@dp.message(F.text == "📝 Создать задачу")
+async def btn_create(msg: Message, state: FSMContext):
+    await state.set_state(CreateTask.info)
     await msg.answer(
-        "📖 Команды:\n\n"
-        "/tasks — активные задачи\n"
-        "/start — приветствие\n\n"
-        "В каждой задаче есть кнопки:\n"
-        "✅ Выполнено — закрыть задачу\n"
-        "✏️ Текст — изменить описание\n"
-        "🕐 Время — изменить дату/время\n"
-        "💎 Очки — изменить количество очков"
+        "📝 Шаг 1 из 3\n\n"
+        "Опиши задачу — что нужно сделать?",
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 
-# ── /tasks ────────────────────────────────────────────────────────────────────
+@dp.message(CreateTask.info)
+async def create_info(msg: Message, state: FSMContext):
+    await state.update_data(info=msg.text.strip())
+    await state.set_state(CreateTask.deadline)
+    await msg.answer(
+        "🕐 Шаг 2 из 3\n\n"
+        "Когда дедлайн?\n\n"
+        "Примеры:\n"
+        "«завтра в 10», «в пятницу в 15», «2026-06-05 14:00»"
+    )
+
+
+@dp.message(CreateTask.deadline)
+async def create_deadline(msg: Message, state: FSMContext):
+    dt_str = _parse_datetime(msg.text.strip())
+    if not dt_str:
+        await msg.answer(
+            "Не понял формат. Попробуй ещё раз:\n"
+            "«завтра в 10», «в пятницу в 15», «2026-06-05 14:00»"
+        )
+        return
+    await state.update_data(deadline=dt_str)
+    await state.set_state(CreateTask.points)
+    await msg.answer(
+        "💎 Шаг 3 из 3\n\n"
+        "Выбери сложность задачи:",
+        reply_markup=POINTS_KB,
+    )
+
+
+@dp.callback_query(CreateTask.points, F.data.startswith("pts:"))
+async def create_points(cb: CallbackQuery, state: FSMContext):
+    pts = int(cb.data.split(":")[1])
+    data = await state.get_data()
+    await state.clear()
+
+    remind_at = datetime.strptime(data["deadline"], "%Y-%m-%d %H:%M:%S")
+    await save_reminder(cb.from_user.id, remind_at, data["info"], pts)
+
+    await cb.message.edit_text(
+        f"✅ Задача создана!\n\n"
+        f"📝 {data['info']}\n"
+        f"🗓 {data['deadline'][:16]}\n"
+        f"💎 +{pts} ✦",
+    )
+    await cb.message.answer("Что дальше?", reply_markup=MAIN_KB)
+    await cb.answer()
+
+
+# ── Кнопка: Ближайшие задачи ─────────────────────────────────────────────────
+
+@dp.message(F.text == "📋 Ближайшие задачи")
+async def btn_tasks(msg: Message, state: FSMContext):
+    await state.clear()
+    rows = await list_reminders(msg.from_user.id)
+    if not rows:
+        await msg.answer(
+            "Нет активных задач.\nНажми «📝 Создать задачу» чтобы добавить.",
+            reply_markup=MAIN_KB,
+        )
+        return
+    # Показываем ближайшие 5
+    for r in rows[:5]:
+        await msg.answer(_task_text(r), reply_markup=_task_done_kb(r["id"]))
+    if len(rows) > 5:
+        await msg.answer(f"...и ещё {len(rows)-5} задач. Все — /tasks")
+
+
+# ── Кнопка: Изменить задачу ───────────────────────────────────────────────────
+
+@dp.message(F.text == "✏️ Изменить задачу")
+async def btn_edit(msg: Message, state: FSMContext):
+    await state.clear()
+    rows = await list_reminders(msg.from_user.id)
+    if not rows:
+        await msg.answer("Нет активных задач.", reply_markup=MAIN_KB)
+        return
+    for r in rows[:10]:
+        await msg.answer(_task_text(r), reply_markup=_task_edit_kb(r["id"]))
+
+
+# ── /tasks (текстовая команда) ────────────────────────────────────────────────
 
 @dp.message(Command("tasks"))
 async def cmd_tasks(msg: Message):
-    await show_tasks(msg.from_user.id, msg)
-
-
-async def show_tasks(user_id: int, msg: Message):
-    rows = await list_reminders(user_id)
+    rows = await list_reminders(msg.from_user.id)
     if not rows:
-        await msg.answer("Нет активных задач. Просто напиши что запомнить 👇")
+        await msg.answer("Нет активных задач.", reply_markup=MAIN_KB)
         return
     for r in rows:
-        await msg.answer(
-            _task_text(r),
-            reply_markup=_task_kb(r["id"]),
-        )
+        await msg.answer(_task_text(r), reply_markup=_task_edit_kb(r["id"]))
 
+
+# ── Inline: Выполнено ─────────────────────────────────────────────────────────
+
+@dp.callback_query(F.data.startswith("done:"))
+async def cb_done(cb: CallbackQuery):
+    task_id = int(cb.data.split(":")[1])
+    task = await get_reminder(task_id)
+    pts_text = f"  +{task['points']} ✦ начислено!" if task and task.get("points") else ""
+    await mark_reminder_sent(task_id)
+    await cb.message.edit_text(f"✅ Выполнено!{pts_text}", reply_markup=None)
+    await cb.answer("Готово!")
+
+
+# ── Inline: Редактировать ─────────────────────────────────────────────────────
+
+# user_id → {"mode": str, "task_id": int}
+_edit_state: dict[int, dict] = {}
+
+@dp.callback_query(F.data.startswith("edit_text:"))
+async def cb_edit_text(cb: CallbackQuery):
+    task_id = int(cb.data.split(":")[1])
+    _edit_state[cb.from_user.id] = {"mode": "text", "task_id": task_id}
+    await cb.message.answer("✏️ Введи новый текст задачи:", reply_markup=ReplyKeyboardRemove())
+    await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("edit_time:"))
+async def cb_edit_time(cb: CallbackQuery):
+    task_id = int(cb.data.split(":")[1])
+    _edit_state[cb.from_user.id] = {"mode": "time", "task_id": task_id}
+    await cb.message.answer(
+        "🕐 Введи новую дату/время:\n«завтра в 11», «2026-06-05 14:00»",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("edit_pts:"))
+async def cb_edit_pts(cb: CallbackQuery):
+    task_id = int(cb.data.split(":")[1])
+    _edit_state[cb.from_user.id] = {"mode": "points", "task_id": task_id}
+    await cb.message.answer(
+        "💎 Выбери новую сложность:",
+        reply_markup=POINTS_KB,
+    )
+    await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("pts:"))
+async def cb_pts_edit(cb: CallbackQuery, state: FSMContext):
+    # Этот хендлер срабатывает вне FSM (при редактировании)
+    # FSM-вариант перехватывается выше через CreateTask.points
+    user_id = cb.from_user.id
+    if user_id not in _edit_state or _edit_state[user_id]["mode"] != "points":
+        return
+    pts = int(cb.data.split(":")[1])
+    task_id = _edit_state.pop(user_id)["task_id"]
+    await update_reminder(task_id, points=pts)
+    task = await get_reminder(task_id)
+    await cb.message.edit_text(f"✅ Очки обновлены: +{pts} ✦\n\n{_task_text(task)}")
+    await cb.message.answer("Что дальше?", reply_markup=MAIN_KB)
+    await cb.answer()
+
+
+# ── Обычные сообщения (в режиме редактирования или свободный чат) ─────────────
+
+@dp.message(F.text)
+async def on_message(msg: Message, state: FSMContext):
+    user_id = msg.from_user.id
+
+    # Режим редактирования (текст / время)
+    if user_id in _edit_state:
+        await handle_edit(msg)
+        return
+
+    await msg.bot.send_chat_action(msg.chat.id, "typing")
+    try:
+        text, reminder = await agent.handle(user_id, msg.text)
+        clean = _strip_json(text)
+
+        if reminder:
+            await save_reminder(
+                user_id, reminder["remind_at"],
+                reminder["text"], reminder.get("points", 0),
+            )
+            pts = reminder.get("points", 0)
+            suffix = f"\n💎 Оценка: +{pts} ✦" if pts else ""
+            await msg.answer((clean or "Записал!") + suffix, reply_markup=MAIN_KB)
+        else:
+            await msg.answer(clean or "Записал!", reply_markup=MAIN_KB)
+
+    except Exception as e:
+        logger.error(f"Error uid={user_id}: {e}", exc_info=True)
+        await msg.answer("Произошла ошибка. Попробуй ещё раз.", reply_markup=MAIN_KB)
+
+
+# ── Edit handler (текст/время) ────────────────────────────────────────────────
+
+async def handle_edit(msg: Message):
+    user_id = msg.from_user.id
+    state = _edit_state.pop(user_id)
+    task_id, mode = state["task_id"], state["mode"]
+    task = await get_reminder(task_id)
+    if not task:
+        await msg.answer("Задача не найдена.", reply_markup=MAIN_KB)
+        return
+
+    if mode == "text":
+        await update_reminder(task_id, text=msg.text.strip())
+        task["text"] = msg.text.strip()
+        await msg.answer(
+            f"✅ Текст обновлён!\n\n{_task_text(task)}",
+            reply_markup=_task_edit_kb(task_id),
+        )
+        await msg.answer("Что дальше?", reply_markup=MAIN_KB)
+
+    elif mode == "time":
+        dt_str = _parse_datetime(msg.text.strip())
+        if not dt_str:
+            _edit_state[user_id] = state  # вернуть состояние
+            await msg.answer("Не понял формат. Попробуй: «завтра в 11», «2026-06-05 14:00»")
+            return
+        await update_reminder(task_id, remind_at=dt_str)
+        task["remind_at"] = dt_str
+        await msg.answer(
+            f"✅ Время обновлено!\n\n{_task_text(task)}",
+            reply_markup=_task_edit_kb(task_id),
+        )
+        await msg.answer("Что дальше?", reply_markup=MAIN_KB)
+
+
+# ── UI helpers ────────────────────────────────────────────────────────────────
 
 def _task_text(r: dict) -> str:
-    dt = r["remind_at"][:16]
+    dt  = r["remind_at"][:16]
     pts = f"+{r['points']} ✦" if r.get("points") else "без очков"
     return f"🗓 {dt}  |  {pts}\n{r['text']}"
 
 
-def _task_kb(task_id: int) -> InlineKeyboardMarkup:
+def _task_done_kb(task_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{task_id}"),
+    ]])
+
+
+def _task_edit_kb(task_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{task_id}"),
-        ],
+        [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{task_id}")],
         [
             InlineKeyboardButton(text="✏️ Текст",  callback_data=f"edit_text:{task_id}"),
             InlineKeyboardButton(text="🕐 Время",  callback_data=f"edit_time:{task_id}"),
@@ -107,167 +349,37 @@ def _task_kb(task_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-# ── Callbacks ─────────────────────────────────────────────────────────────────
-
-@dp.callback_query(F.data.startswith("done:"))
-async def cb_done(cb: CallbackQuery):
-    task_id = int(cb.data.split(":")[1])
-    task = await get_reminder(task_id)
-    pts_text = f"  +{task['points']} ✦ начислено!" if task and task.get("points") else ""
-    await mark_reminder_sent(task_id)
-    await cb.message.edit_text(
-        f"✅ Выполнено!{pts_text}\n\n~~{cb.message.text}~~",
-        reply_markup=None,
-    )
-    await cb.answer("Готово!")
-
-
-@dp.callback_query(F.data.startswith("edit_text:"))
-async def cb_edit_text(cb: CallbackQuery):
-    task_id = int(cb.data.split(":")[1])
-    _edit_state[cb.from_user.id] = {"mode": "text", "task_id": task_id, "msg_id": cb.message.message_id}
-    await cb.message.answer("✏️ Введи новый текст задачи:")
-    await cb.answer()
-
-
-@dp.callback_query(F.data.startswith("edit_time:"))
-async def cb_edit_time(cb: CallbackQuery):
-    task_id = int(cb.data.split(":")[1])
-    _edit_state[cb.from_user.id] = {"mode": "time", "task_id": task_id, "msg_id": cb.message.message_id}
-    await cb.message.answer(
-        "🕐 Введи новую дату и время:\n"
-        "Примеры: «завтра в 11», «2026-06-05 14:00», «в пятницу в 9»"
-    )
-    await cb.answer()
-
-
-@dp.callback_query(F.data.startswith("edit_pts:"))
-async def cb_edit_pts(cb: CallbackQuery):
-    task_id = int(cb.data.split(":")[1])
-    _edit_state[cb.from_user.id] = {"mode": "points", "task_id": task_id, "msg_id": cb.message.message_id}
-    await cb.message.answer(
-        "💎 Введи количество очков (число):\n"
-        "Система: мелкая=5, средняя=10, крупная=20, блок лёгкий=20, средний=40, тяжёлый=80"
-    )
-    await cb.answer()
-
-
-# ── Основной обработчик ───────────────────────────────────────────────────────
-
-@dp.message(F.text)
-async def on_message(msg: Message):
-    user_id = msg.from_user.id
-
-    # Режим редактирования
-    if user_id in _edit_state:
-        await handle_edit(msg)
-        return
-
-    await msg.bot.send_chat_action(msg.chat.id, "typing")
-
-    try:
-        text, reminder = await agent.handle(user_id, msg.text)
-        clean = _strip_json(text)
-
-        if reminder:
-            await save_reminder(
-                user_id,
-                reminder["remind_at"],
-                reminder["text"],
-                reminder.get("points", 0),
-            )
-            pts = reminder.get("points", 0)
-            pts_line = f"\n💎 Оценка: +{pts} ✦" if pts else ""
-            logger.info(f"Reminder saved: uid={user_id} at={reminder['remind_at']} pts={pts}")
-            await msg.answer((clean or "Записал!") + pts_line)
-        else:
-            await msg.answer(clean or "Записал!")
-
-    except Exception as e:
-        logger.error(f"Error for user {user_id}: {e}", exc_info=True)
-        await msg.answer("Произошла ошибка. Попробуй ещё раз.")
-
-
-# ── Edit handler ──────────────────────────────────────────────────────────────
-
-async def handle_edit(msg: Message):
-    user_id = msg.from_user.id
-    state = _edit_state.pop(user_id)
-    task_id = state["task_id"]
-    mode    = state["mode"]
-
-    task = await get_reminder(task_id)
-    if not task:
-        await msg.answer("Задача не найдена.")
-        return
-
-    if mode == "text":
-        await update_reminder(task_id, text=msg.text.strip())
-        task["text"] = msg.text.strip()
-        await msg.answer(
-            f"✅ Текст обновлён:\n\n{_task_text(task)}",
-            reply_markup=_task_kb(task_id),
-        )
-
-    elif mode == "time":
-        dt_str = _parse_datetime(msg.text.strip())
-        if not dt_str:
-            await msg.answer(
-                "Не понял формат. Попробуй: «завтра в 11», «2026-06-05 14:00»"
-            )
-            return
-        await update_reminder(task_id, remind_at=dt_str)
-        task["remind_at"] = dt_str
-        await msg.answer(
-            f"✅ Время обновлено:\n\n{_task_text(task)}",
-            reply_markup=_task_kb(task_id),
-        )
-
-    elif mode == "points":
-        try:
-            pts = int(_re.search(r'\d+', msg.text).group())
-        except Exception:
-            await msg.answer("Введи число, например: 10")
-            return
-        await update_reminder(task_id, points=pts)
-        task["points"] = pts
-        await msg.answer(
-            f"✅ Очки обновлены:\n\n{_task_text(task)}",
-            reply_markup=_task_kb(task_id),
-        )
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 def _strip_json(text: str) -> str:
     return _re.sub(r'\{[^{}]*"action"\s*:\s*"set_reminder"[^{}]*\}', '', text).strip()
 
 
 def _parse_datetime(text: str) -> str | None:
-    """
-    Пытается распарсить дату из текста.
-    Поддерживает: YYYY-MM-DD HH:MM, DD.MM.YYYY HH:MM
-    Для нечётких форматов («завтра в 11») возвращает None — пусть ИИ обработает.
-    """
-    # ISO format
+    now = datetime.now()
+    # ISO: 2026-06-05 14:00
     m = _re.search(r'(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})', text)
     if m:
         return f"{m.group(1)} {m.group(2)}:00"
-    # RU format DD.MM.YYYY HH:MM
+    # RU: 05.06.2026 14:00
     m = _re.search(r'(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})', text)
     if m:
         d, mo, y, h, mi = m.groups()
         return f"{y}-{mo}-{d} {h}:{mi}:00"
-    # "завтра в 11" / "сегодня в 14:30" — natural language
-    now = datetime.now()
+    # Natural: завтра/сегодня + час
     m_h = _re.search(r'(\d{1,2})(?::(\d{2}))?', text)
-    hour = int(m_h.group(1)) if m_h else 9
+    hour   = int(m_h.group(1)) if m_h else 9
     minute = int(m_h.group(2)) if m_h and m_h.group(2) else 0
     if "завтра" in text:
-        from datetime import timedelta
         d = now + timedelta(days=1)
         return f"{d.strftime('%Y-%m-%d')} {hour:02d}:{minute:02d}:00"
-    if "сегодня" in text or "через" not in text:
+    if "послезавтра" in text:
+        d = now + timedelta(days=2)
+        return f"{d.strftime('%Y-%m-%d')} {hour:02d}:{minute:02d}:00"
+    # через N часов
+    m_delta = _re.search(r'через\s+(\d+)\s+час', text)
+    if m_delta:
+        d = now + timedelta(hours=int(m_delta.group(1)))
+        return d.strftime("%Y-%m-%d %H:%M:%S")
+    if "сегодня" in text:
         return f"{now.strftime('%Y-%m-%d')} {hour:02d}:{minute:02d}:00"
     return None
 
