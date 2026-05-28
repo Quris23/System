@@ -5,9 +5,19 @@ Runs as a background asyncio task, checks every 60 s for due reminders.
 import asyncio
 import logging
 from datetime import datetime
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from db import get_due_reminders, mark_reminder_sent
 
 logger = logging.getLogger(__name__)
+
+
+def _reminder_kb(reminder_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Выполнено", callback_data=f"done:{reminder_id}"),
+        InlineKeyboardButton(text="❌ Отмена",    callback_data=f"remind_dismiss:{reminder_id}"),
+    ]])
 
 
 async def check_reminders(bot) -> int:
@@ -17,9 +27,12 @@ async def check_reminders(bot) -> int:
     sent = 0
     for r in reminders:
         try:
+            pts_text = f"  (+{r['points']} ✦)" if r.get("points") else ""
             await bot.send_message(
                 chat_id=r["user_id"],
-                text=f"🔔 Напоминание: {r['text']}",
+                text=f"🔔 <b>Напоминание:</b> {r['text']}{pts_text}",
+                parse_mode="HTML",
+                reply_markup=_reminder_kb(r["id"]),
             )
             await mark_reminder_sent(r["id"])
             sent += 1

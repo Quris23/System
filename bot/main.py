@@ -271,49 +271,68 @@ async def _save_and_confirm(cb: CallbackQuery, data: dict,
     await cb.answer()
 
 
-# ── Кнопка: Ближайшие задачи ─────────────────────────────────────────────────
+# ── Недельный вид задач ───────────────────────────────────────────────────────
+
+async def _week_message(user_id: int, week_offset: int) -> tuple[str, InlineKeyboardMarkup]:
+    """Собрать текст + клавиатуру для задач на неделю с offset=N."""
+    today      = datetime.now().date()
+    week_start = today + timedelta(days=week_offset * 7)
+    week_end   = week_start + timedelta(days=7)
+
+    items: list[tuple] = []  # (date, text_line)
+
+    # Локальные задачи бота
+    for r in await list_reminders(user_id):
+        try:
+            dt = datetime.strptime(r["remind_at"][:10], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if week_start <= dt < week_end:
+            pts = f"  +{r['points']} ✦" if r.get("points") else ""
+            items.append((dt, f"🗓 <b>{dt.strftime('%d.%m')}</b>  {r['text']}{pts}\n   <i>📌 бот</i>"))
+
+    # Квесты из SYSTEM (Supabase)
+    for q in await get_upcoming_quests(user_id):
+        try:
+            dt = datetime.strptime(q["deadline"], "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if week_start <= dt < week_end:
+            pts = f"  +{q['reward']} ✦" if q.get("reward") else ""
+            src = f"{q['system_title']} → {q['block_title']}"
+            items.append((dt, f"🗓 <b>{dt.strftime('%d.%m')}</b>  {q['title']}{pts}\n   <i>{src}</i>"))
+
+    items.sort(key=lambda x: x[0])
+
+    header = (
+        f"📅 <b>{week_start.strftime('%d.%m')} — "
+        f"{(week_end - timedelta(days=1)).strftime('%d.%m')}</b>"
+    )
+    body  = "\n\n".join(t for _, t in items) if items else "Нет задач на эту неделю."
+    text  = f"{header}\n\n{body}"
+
+    nav = []
+    if week_offset > 0:
+        nav.append(InlineKeyboardButton(text="← Пред. неделя", callback_data=f"week:{week_offset-1}"))
+    nav.append(InlineKeyboardButton(text="Сл. неделя →", callback_data=f"week:{week_offset+1}"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[nav])
+
+    return text, kb
+
 
 @dp.message(F.text == "📋 Ближайшие задачи")
 async def btn_tasks(msg: Message, state: FSMContext):
     await state.clear()
-    user_id = msg.from_user.id
+    text, kb = await _week_message(msg.from_user.id, week_offset=0)
+    await msg.answer(text, reply_markup=kb, parse_mode="HTML")
 
-    # Задачи из локальной БД бота
-    local = await list_reminders(user_id)
 
-    # Квесты с дедлайнами из SYSTEM (Supabase)
-    system_quests = await get_upcoming_quests(user_id)
-
-    if not local and not system_quests:
-        await msg.answer(
-            "Нет активных задач. Нажми «📝 Создать задачу».",
-            reply_markup=MAIN_KB,
-        )
-        return
-
-    # Сначала локальные (из бота)
-    if local:
-        await msg.answer("📋 <b>Задачи из бота:</b>", parse_mode="HTML")
-        for r in local[:5]:
-            await msg.answer(_task_text(r), reply_markup=_task_done_kb(r["id"]))
-        if len(local) > 5:
-            await msg.answer(f"...и ещё {len(local)-5}. Все — /tasks")
-
-    # Потом квесты из SYSTEM
-    if system_quests:
-        await msg.answer("🪐 <b>Квесты из SYSTEM:</b>", parse_mode="HTML")
-        for q in system_quests[:8]:
-            dl = q["deadline"]  # YYYY-MM-DD
-            pts = f"+{q['reward']} ✦" if q.get("reward") else ""
-            loc = f"{q['system_title']} → {q['block_title']}"
-            await msg.answer(
-                f"🗓 {dl}  {pts}\n"
-                f"📝 {q['title']}\n"
-                f"<i>{loc}</i>",
-                parse_mode="HTML",
-            )
-        if len(system_quests) > 8:
-            await msg.answer(f"...и ещё {len(system_quests)-8} квестов на сайте")
+@dp.callback_query(F.data.startswith("week:"))
+async def cb_week(cb: CallbackQuery):
+    offset = int(cb.data.split(":")[1])
+    text, kb = await _week_message(cb.from_user.id, week_offset=offset)
+    await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await cb.answer()
 
 
 # ── Кнопка: Изменить задачу ───────────────────────────────────────────────────
@@ -341,7 +360,7 @@ async def cmd_tasks(msg: Message):
         await msg.answer(_task_text(r), reply_markup=_task_edit_kb(r["id"]))
 
 
-# ── Inline: Выполнено ─────────────────────────────────────────────────────────
+# ── Inline: Выполнено / Отмена напоминания ───────────────────────────────────
 
 @dp.callback_query(F.data.startswith("done:"))
 async def cb_done(cb: CallbackQuery):
@@ -351,6 +370,14 @@ async def cb_done(cb: CallbackQuery):
     await mark_reminder_sent(task_id)
     await cb.message.edit_text(f"✅ Выполнено!{pts_text}", reply_markup=None)
     await cb.answer("Готово!")
+
+
+@dp.callback_query(F.data.startswith("remind_dismiss:"))
+async def cb_remind_dismiss(cb: CallbackQuery):
+    task_id = int(cb.data.split(":")[1])
+    await mark_reminder_sent(task_id)
+    await cb.message.edit_text("❌ Напоминание отклонено.", reply_markup=None)
+    await cb.answer()
 
 
 # ── Inline: Редактировать ─────────────────────────────────────────────────────
